@@ -212,20 +212,21 @@ def render_sidebar(jira_client: JiraClient):
     with st.sidebar:
         st.header("🔍 Filters")
         
-        # Predefined QA reporters
+        # Predefined QA reporters (fallback if not found in Jira)
         QA_REPORTERS = [
             "Chinthaka Somarathna",
             "Madushika Deshappriya",
+            "Pasindu Hashara Liyanage",
             "Rukshani Jayathilaka",
-            "Pasindu Liyanage",
             "Ushan Jayakody"
         ]
         
         # Fetch all project users for reporter filter
         # Cache this in session state to avoid repeated API calls
         if 'all_project_users' not in st.session_state:
-            with st.spinner("Loading project users..."):
+            with st.spinner("Loading project users from Jira..."):
                 st.session_state.all_project_users = jira_client.get_project_users()
+                logger.info(f"Loaded {len(st.session_state.all_project_users)} users from Jira: {st.session_state.all_project_users}")
         
         all_project_users = st.session_state.all_project_users
         
@@ -300,14 +301,21 @@ def render_sidebar(jira_client: JiraClient):
         if reporter_filter_type == "QA Team Only":
             selected_reporters = QA_REPORTERS
             st.success(f"✓ {len(QA_REPORTERS)} QA team members")
+            with st.expander("👥 QA Team Members"):
+                for member in QA_REPORTERS:
+                    in_jira = "✅" if member in all_project_users else "⚠️ (not in Jira)"
+                    st.caption(f"{in_jira} {member}")
         elif reporter_filter_type == "Custom Selection":
             selected_reporters = st.multiselect(
                 "Select Reporters",
                 options=all_project_users,
                 help="Select specific reporters from all project users"
             )
+            if selected_reporters:
+                st.info(f"✓ {len(selected_reporters)} reporter(s) selected")
         else:
             selected_reporters = None
+            st.info(f"📊 All reporters ({len(all_project_users)} total)")
         
         st.divider()
         
@@ -673,7 +681,7 @@ def main():
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        st.subheader(f"📁 Project: {config.project_key}")
+        st.subheader(f"📁 Project: Intellisight Plus ({config.project_key})")
     
     with col2:
         if st.button("🔄 Fetch Data", type="primary", use_container_width=True):

@@ -242,7 +242,11 @@ class JiraClient:
             # Convert to sorted list
             user_list = sorted(user_names)
             
+            # Log the retrieved users for debugging
             logger.info(f"Retrieved {len(user_list)} unique reporters for project {self.project_key}")
+            if user_list:
+                logger.debug(f"Reporter list: {', '.join(user_list)}")
+            
             return user_list if user_list else self._get_default_qa_team()
             
         except Exception as e:
@@ -254,7 +258,7 @@ class JiraClient:
         return [
             "Chinthaka Somarathna",
             "Madushika Deshappriya",
+            "Pasindu Hashara Liyanage",
             "Rukshani Jayathilaka",
-            "Pasindu Liyanage",
             "Ushan Jayakody"
         ]
