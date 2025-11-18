@@ -42,48 +42,77 @@ class AppConfig:
     """Application Configuration Manager"""
     
     def __init__(self):
-        self.is_streamlit = self._check_streamlit_env()
         self.jira_config: Optional[JiraConfig] = None
         
-    def _check_streamlit_env(self) -> bool:
-        """Check if running in Streamlit environment"""
+    def _has_streamlit_secrets(self) -> bool:
+        """Check if Streamlit secrets are available"""
         try:
-            # Avoid statically importing Streamlit's internal module (which many linters/IDEs flag);
-            # dynamically import the script_run_context module and call get_script_run_ctx if available.
-            import importlib
-            module = importlib.import_module("streamlit.runtime.scriptrunner.script_run_context")
-            get_ctx = getattr(module, "get_script_run_ctx", None)
-            if callable(get_ctx):
-                return get_ctx() is not None
-            return False
+            # Check if we have access to st.secrets and it has content
+            if not hasattr(st, 'secrets'):
+                return False
+            
+            # Try to access secrets - if it raises an error, no secrets available
+            try:
+                _ = dict(st.secrets)
+                return len(st.secrets) > 0
+            except:
+                return False
         except Exception:
             return False
     
     def load_config(self) -> JiraConfig:
-        """Load configuration from appropriate source"""
+        """
+        Load configuration with priority:
+        1. Streamlit secrets (if available) - for Streamlit Cloud
+        2. Environment variables from .env - for local development only
+        """
         try:
-            if self.is_streamlit:
+            # Try Streamlit secrets first (production/cloud deployment)
+            if self._has_streamlit_secrets():
+                logger.info("Loading configuration from Streamlit secrets")
                 return self._load_streamlit_secrets()
             else:
+                # Fall back to .env for local development
+                logger.info("Loading configuration from .env file (local development)")
                 return self._load_env_vars()
         except Exception as e:
             logger.error(f"Configuration loading failed: {str(e)}")
             raise
     
     def _load_streamlit_secrets(self) -> JiraConfig:
-        """Load configuration from Streamlit secrets"""
+        """Load configuration from Streamlit secrets (Streamlit Cloud only)"""
         try:
-            # Try loading from [jira] section first, then fall back to root level
-            jira_section = st.secrets.get("jira", {})
+            # Load from [jira] section in secrets.toml
+            if "jira" not in st.secrets:
+                raise ValueError(
+                    "Missing [jira] section in Streamlit secrets.\n"
+                    "Add your Jira configuration in Streamlit Cloud dashboard under Settings > Secrets."
+                )
             
+            jira_section = st.secrets["jira"]
+            
+            # Required fields
             cloud_id = jira_section.get("cloud_id")
             project_key = jira_section.get("project_key")
             base_url = jira_section.get("base_url")
-            email = jira_section.get("email") or st.secrets.get("JIRA_EMAIL")
-            api_token = jira_section.get("api_token") or st.secrets.get("JIRA_API_TOKEN")
+            email = jira_section.get("email")
+            api_token = jira_section.get("api_token")
             
-            if not all([cloud_id, project_key, base_url]):
-                raise ValueError("Missing required Jira configuration in secrets.toml")
+            # Validate required fields
+            missing_fields = []
+            if not cloud_id: missing_fields.append("cloud_id")
+            if not project_key: missing_fields.append("project_key")
+            if not base_url: missing_fields.append("base_url")
+            if not email: missing_fields.append("email")
+            if not api_token: missing_fields.append("api_token")
+            
+            if missing_fields:
+                raise ValueError(
+                    f"Missing required fields in [jira] section: {', '.join(missing_fields)}\n"
+                    f"Add these to your Streamlit Cloud secrets."
+                )
+            
+            logger.info(f"Successfully loaded Streamlit secrets for project: {project_key}")
             
             return JiraConfig(
                 cloud_id=cloud_id,
@@ -92,43 +121,59 @@ class AppConfig:
                 email=email,
                 api_token=api_token
             )
-        except KeyError as e:
-            raise ValueError(f"Missing required secret: {e}")
+        except ValueError:
+            raise
         except Exception as e:
-            raise ValueError(f"Error loading secrets: {e}")
+            raise ValueError(f"Error reading Streamlit secrets: {str(e)}")
     
     def _load_env_vars(self) -> JiraConfig:
-        """Load configuration from environment variables"""
-        from dotenv import load_dotenv
-        load_dotenv()
-        
-        cloud_id = os.getenv("JIRA_CLOUD_ID")
-        project_key = os.getenv("JIRA_PROJECT_KEY")
-        base_url = os.getenv("JIRA_BASE_URL")
-        email = os.getenv("JIRA_EMAIL")
-        api_token = os.getenv("JIRA_API_TOKEN")
-        
-        if not all([cloud_id, project_key, base_url]):
+        """Load configuration from .env file (local development only)"""
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            cloud_id = os.getenv("JIRA_CLOUD_ID")
+            project_key = os.getenv("JIRA_PROJECT_KEY")
+            base_url = os.getenv("JIRA_BASE_URL")
+            email = os.getenv("JIRA_EMAIL")
+            api_token = os.getenv("JIRA_API_TOKEN")
+            
+            # Validate required fields
             missing_vars = []
             if not cloud_id: missing_vars.append("JIRA_CLOUD_ID")
             if not project_key: missing_vars.append("JIRA_PROJECT_KEY")
             if not base_url: missing_vars.append("JIRA_BASE_URL")
+            if not email: missing_vars.append("JIRA_EMAIL")
+            if not api_token: missing_vars.append("JIRA_API_TOKEN")
             
-            raise ValueError(
-                f"Missing required environment variables in .env file: {', '.join(missing_vars)}\n"
-                f"Copy .env.example to .env and fill in your credentials."
+            if missing_vars:
+                raise ValueError(
+                    f"Missing required environment variables in .env file:\n"
+                    f"  - {chr(10).join(missing_vars)}\n\n"
+                    f"📝 Copy .env.example to .env and fill in your Jira credentials.\n"
+                    f"📖 See CONFIGURATION_GUIDE.md for setup instructions."
+                )
+            
+            # Type assertion: these are guaranteed non-None after validation
+            assert cloud_id is not None
+            assert project_key is not None
+            assert base_url is not None
+            assert email is not None
+            assert api_token is not None
+            
+            logger.info(f"Successfully loaded .env configuration for project: {project_key}")
+            
+            return JiraConfig(
+                cloud_id=cloud_id,
+                project_key=project_key,
+                base_url=base_url,
+                email=email,
+                api_token=api_token
             )
-        
-        # Narrow types for the type checker: these are guaranteed non-None due to the check above
-        assert cloud_id is not None and project_key is not None and base_url is not None
-        
-        return JiraConfig(
-            cloud_id=cloud_id,
-            project_key=project_key,
-            base_url=base_url,
-            email=email,
-            api_token=api_token
-        )
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ValueError(f"Error loading .env file: {str(e)}")
     
     def get_config(self) -> JiraConfig:
         """Get current configuration"""

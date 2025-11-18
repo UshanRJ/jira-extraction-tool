@@ -100,48 +100,85 @@ def load_configuration():
         st.session_state.config_loaded = True
         return config
     except ValueError as e:
-        st.error(f"⚠️ Configuration Error: {str(e)}")
+        error_msg = str(e)
+        st.error(f"⚠️ Configuration Error")
         
-        # Detect if we're in Streamlit Cloud or local
-        is_streamlit_cloud = config_manager.is_streamlit
+        # Check if we have Streamlit secrets available
+        has_secrets = hasattr(st, 'secrets') and len(st.secrets) > 0
         
         with st.expander("📖 Configuration Help", expanded=True):
-            if is_streamlit_cloud:
+            st.error(error_msg)
+            st.markdown("---")
+            
+            if has_secrets:
+                # Running on Streamlit Cloud but secrets are incomplete
                 st.markdown("""
-                ### Streamlit Cloud Configuration:
+                ### 🌐 Streamlit Cloud Configuration Issue
                 
-                1. Go to your app settings on Streamlit Cloud
-                2. Add the following to your **Secrets**:
+                Your app is running on Streamlit Cloud but some required secrets are missing.
+                
+                **How to Fix:**
+                
+                1. Go to your app settings on [Streamlit Cloud](https://share.streamlit.io)
+                2. Navigate to **Settings → Secrets**
+                3. Add the following configuration:
                 
                 ```toml
                 [jira]
-                cloud_id = "your-cloud-id"
+                cloud_id = "your-atlassian-cloud-id"
                 project_key = "IBNU"
                 base_url = "https://yourcompany.atlassian.net"
                 email = "your-email@example.com"
-                api_token = "your-api-token"
+                api_token = "your-jira-api-token"
                 
                 [users]
                 admin = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
                 ```
                 
-                See `API_SETUP.md` for how to get your Jira credentials.
+                4. Click **Save** (app will restart automatically)
+                
+                **Getting Credentials:**
+                - 📖 See [API_SETUP.md](https://github.com/UshanRJ/jira-extraction-tool/blob/master/API_SETUP.md)
+                - 🔑 [Get Jira API Token](https://id.atlassian.com/manage-profile/security/api-tokens)
+                
+                **Note:** `.env` files are NOT used on Streamlit Cloud - only Secrets!
                 """)
             else:
+                # Running locally
                 st.markdown("""
-                ### Local Development Configuration:
+                ### 💻 Local Development Configuration
                 
-                1. Copy `.env.example` to `.env`
-                2. Fill in your Jira credentials:
-                   - `JIRA_CLOUD_ID`
-                   - `JIRA_PROJECT_KEY`
-                   - `JIRA_BASE_URL`
-                   - `JIRA_EMAIL`
-                   - `JIRA_API_TOKEN`
-                3. Add user credentials (see README.md)
-                4. Restart the application
+                **How to Fix:**
                 
-                See `API_SETUP.md` for detailed instructions.
+                1. Create a `.env` file by copying the example:
+                   ```bash
+                   copy .env.example .env
+                   ```
+                
+                2. Edit `.env` and fill in your Jira credentials:
+                   ```env
+                   JIRA_CLOUD_ID=your-cloud-id
+                   JIRA_PROJECT_KEY=IBNU
+                   JIRA_BASE_URL=https://yourcompany.atlassian.net
+                   JIRA_EMAIL=your-email@example.com
+                   JIRA_API_TOKEN=your-api-token
+                   
+                   # User credentials
+                   APP_USER_1_USERNAME=admin
+                   APP_USER_1_PASSWORD_HASH=8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+                   ```
+                
+                3. Restart the application:
+                   ```bash
+                   streamlit run app.py
+                   ```
+                
+                **Getting Credentials:**
+                - 📖 See `CONFIGURATION_GUIDE.md` for detailed setup
+                - 📖 See `API_SETUP.md` for getting Jira credentials
+                - 🔑 [Get Jira API Token](https://id.atlassian.com/manage-profile/security/api-tokens)
+                
+                **Note:** For production deployment, use Streamlit Cloud Secrets instead of `.env` files!
                 """)
         st.stop()
     except Exception as e:
