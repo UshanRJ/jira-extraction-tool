@@ -101,17 +101,48 @@ def load_configuration():
         return config
     except ValueError as e:
         st.error(f"⚠️ Configuration Error: {str(e)}")
+        
+        # Detect if we're in Streamlit Cloud or local
+        is_streamlit_cloud = config_manager.is_streamlit
+        
         with st.expander("📖 Configuration Help", expanded=True):
-            st.markdown("""
-            ### How to Set Up Configuration:
-            
-            **For Local Development:**
-            1. Copy `.env.example` to `.env`
-            2. Fill in your Jira credentials
-            3. Restart the application
-            
-            See `API_SETUP.md` for detailed instructions.
-            """)
+            if is_streamlit_cloud:
+                st.markdown("""
+                ### Streamlit Cloud Configuration:
+                
+                1. Go to your app settings on Streamlit Cloud
+                2. Add the following to your **Secrets**:
+                
+                ```toml
+                [jira]
+                cloud_id = "your-cloud-id"
+                project_key = "IBNU"
+                base_url = "https://yourcompany.atlassian.net"
+                email = "your-email@example.com"
+                api_token = "your-api-token"
+                
+                [users]
+                admin = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+                ```
+                
+                See `API_SETUP.md` for how to get your Jira credentials.
+                """)
+            else:
+                st.markdown("""
+                ### Local Development Configuration:
+                
+                1. Copy `.env.example` to `.env`
+                2. Fill in your Jira credentials:
+                   - `JIRA_CLOUD_ID`
+                   - `JIRA_PROJECT_KEY`
+                   - `JIRA_BASE_URL`
+                   - `JIRA_EMAIL`
+                   - `JIRA_API_TOKEN`
+                3. Add user credentials (see README.md)
+                4. Restart the application
+                
+                See `API_SETUP.md` for detailed instructions.
+                """)
         st.stop()
     except Exception as e:
         st.error(f"⚠️ Unexpected Configuration Error: {str(e)}")

@@ -73,15 +73,29 @@ class AppConfig:
     def _load_streamlit_secrets(self) -> JiraConfig:
         """Load configuration from Streamlit secrets"""
         try:
+            # Try loading from [jira] section first, then fall back to root level
+            jira_section = st.secrets.get("jira", {})
+            
+            cloud_id = jira_section.get("cloud_id")
+            project_key = jira_section.get("project_key")
+            base_url = jira_section.get("base_url")
+            email = jira_section.get("email") or st.secrets.get("JIRA_EMAIL")
+            api_token = jira_section.get("api_token") or st.secrets.get("JIRA_API_TOKEN")
+            
+            if not all([cloud_id, project_key, base_url]):
+                raise ValueError("Missing required Jira configuration in secrets.toml")
+            
             return JiraConfig(
-                cloud_id=st.secrets["jira"]["cloud_id"],
-                project_key=st.secrets["jira"]["project_key"],
-                base_url=st.secrets["jira"]["base_url"],
-                email=st.secrets["jira"].get("email"),
-                api_token=st.secrets["jira"].get("api_token")
+                cloud_id=cloud_id,
+                project_key=project_key,
+                base_url=base_url,
+                email=email,
+                api_token=api_token
             )
         except KeyError as e:
             raise ValueError(f"Missing required secret: {e}")
+        except Exception as e:
+            raise ValueError(f"Error loading secrets: {e}")
     
     def _load_env_vars(self) -> JiraConfig:
         """Load configuration from environment variables"""
@@ -95,7 +109,15 @@ class AppConfig:
         api_token = os.getenv("JIRA_API_TOKEN")
         
         if not all([cloud_id, project_key, base_url]):
-            raise ValueError("Missing required environment variables. Check .env file.")
+            missing_vars = []
+            if not cloud_id: missing_vars.append("JIRA_CLOUD_ID")
+            if not project_key: missing_vars.append("JIRA_PROJECT_KEY")
+            if not base_url: missing_vars.append("JIRA_BASE_URL")
+            
+            raise ValueError(
+                f"Missing required environment variables in .env file: {', '.join(missing_vars)}\n"
+                f"Copy .env.example to .env and fill in your credentials."
+            )
         
         # Narrow types for the type checker: these are guaranteed non-None due to the check above
         assert cloud_id is not None and project_key is not None and base_url is not None

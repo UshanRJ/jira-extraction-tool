@@ -37,6 +37,7 @@ pip install -r requirements.txt
 
 ### 2. Configure
 
+**For Local Development:**
 ```bash
 # Copy example config
 copy .env.example .env
@@ -44,18 +45,25 @@ copy .env.example .env
 # Edit .env with your details
 ```
 
-Required in `.env`:
+**For Streamlit Cloud (Production):**
+- **DO NOT** use `.env` file
+- Add secrets in Streamlit Cloud dashboard instead
+
+Required configuration:
 ```env
-JIRA_PROJECT_KEY=your-jira-project-key
-JIRA_BASE_URL=your-jira-base-url
+JIRA_CLOUD_ID=your-cloud-id
+JIRA_PROJECT_KEY=your-project-key
+JIRA_BASE_URL=https://yourcompany.atlassian.net
 JIRA_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 
-APP_USERNAME=your-app-username
-APP_PASSWORD_HASH=your-app-password-hash
+# User credentials (see User Management section)
+APP_USER_1_USERNAME=admin
+APP_USER_1_PASSWORD_HASH=your-hash
 ```
 
 **Get your Jira API token**: [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+
 
 ### 3. Run
 
@@ -332,9 +340,8 @@ password_hash = "your-hash"
 
 ## 🤝 Support
 
-- Check documentation in `PRODUCTION_GUIDE.md`
-- Review logs in `logs/` directory
-- Create an issue on GitHub
+- **Logs**: Review files in `logs/` directory
+- **Issues**: Create an issue on GitHub
 
 ---
 
