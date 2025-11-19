@@ -236,7 +236,7 @@ def render_sidebar(jira_client: JiraClient):
         
         preset_options = {
             "🐛 Bugs Only": ["Bug"],
-            "📝 Tasks with 'Need Clarification'": ["Task"],
+            "📝 Tasks with 'Clarification'": ["Task"],
             "📊 All Types": available_issue_types,
             "🎯 Custom Selection": []
         }
@@ -257,11 +257,22 @@ def render_sidebar(jira_client: JiraClient):
             selected_issue_types = preset_options[preset]
             st.info(f"✓ {', '.join(selected_issue_types)}")
         
-        # Special filter for tasks with "Need Clarification"
+        # Special filter to include only clarification tasks
         filter_clarifications = st.checkbox(
-            "📌 Filter: Title contains 'Need Clarification'",
-            value=(preset == "📝 Tasks with 'Need Clarification'"),
-            help="Only show tasks with 'Need Clarification' in the title"
+            "📌 Filter: Title contains 'Clarification'",
+            value=False,
+            help="Apply special filter: status IN ('01_To Do', 'To Do', 'Ready For Dev') AND type = Task AND summary ~ 'clarification'"
+        )
+        
+        st.divider()
+        
+        # Custom Summary Search (available for all presets)
+        st.subheader("🔎 Summary Search")
+        summary_search_text = st.text_input(
+            "Search in Summary",
+            value="",
+            placeholder="Enter text to search in issue summaries...",
+            help="Search for issues containing this text in their summary (case-insensitive)"
         )
         
         st.divider()
@@ -379,6 +390,7 @@ def render_sidebar(jira_client: JiraClient):
             - **Reporters**: {len(selected_reporters) if selected_reporters else 'All'}
             - **Date Range**: {'Enabled' if use_date_filter else 'Disabled'}
             - **Sprint Filter**: {'Yes' if filter_no_sprint else 'No'}
+            - **Summary Search**: {'Yes' if summary_search_text else 'No'}
             """)
         
         return {
@@ -390,6 +402,7 @@ def render_sidebar(jira_client: JiraClient):
             'end_date': end_date,
             'filter_no_sprint': filter_no_sprint,
             'filter_clarifications': filter_clarifications,
+            'summary_search': summary_search_text.strip() if summary_search_text else None,
             'max_results': max_results
         }
 
@@ -407,6 +420,8 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
             statuses=filters['statuses'],
             priorities=filters['priorities'],
             include_sprint_filter=filters['filter_no_sprint'],
+            filter_clarifications=filters['filter_clarifications'],
+            summary_search=filters.get('summary_search'),
             max_results=filters['max_results']
         )
         
@@ -424,9 +439,7 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
         
         progress_bar.progress(75, text="🔍 Applying filters...")
         
-        # Apply clarification filter if needed
-        if filters['filter_clarifications']:
-            df = df[df['Summary'].str.contains('Need Clarification', case=False, na=False)]
+        # Clarification filter is now applied at JQL level, no need for client-side filtering
         
         # Apply reporter filter
         if filters['reporters']:

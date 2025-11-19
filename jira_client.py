@@ -80,6 +80,8 @@ class JiraClient:
         statuses: List[str],
         priorities: List[str],
         include_sprint_filter: bool = False,
+        filter_clarifications: bool = False,
+        summary_search: Optional[str] = None,
         max_results: int = 100
     ) -> List[Dict[str, Any]]:
         """
@@ -90,6 +92,8 @@ class JiraClient:
             statuses: List of statuses (e.g., ['To Do', 'Ready for Dev'])
             priorities: List of priorities (e.g., ['P0', 'P1', 'P2'])
             include_sprint_filter: If True, filter for issues without sprint
+            filter_clarifications: If True, filter for tasks with clarification in summary
+            summary_search: Optional text to search in issue summaries
             max_results: Maximum number of results to return
         
         Returns:
@@ -109,10 +113,19 @@ class JiraClient:
             
             # Add status filter
             if statuses:
-                if len(statuses) == 1:
-                    jql_parts.append(f'status = "{statuses[0]}"')
+                # Expand "To Do" to include both "01_To Do" and "To Do"
+                expanded_statuses = []
+                for status in statuses:
+                    if status == "To Do":
+                        # Add both variants for To Do
+                        expanded_statuses.extend(["01_To Do", "To Do"])
+                    else:
+                        expanded_statuses.append(status)
+                
+                if len(expanded_statuses) == 1:
+                    jql_parts.append(f'status = "{expanded_statuses[0]}"')
                 else:
-                    statuses_str = ', '.join([f'"{s}"' for s in statuses])
+                    statuses_str = ', '.join([f'"{s}"' for s in expanded_statuses])
                     jql_parts.append(f'status IN ({statuses_str})')
             
             # Add priority filter
@@ -127,7 +140,21 @@ class JiraClient:
             if include_sprint_filter:
                 jql_parts.append('sprint is EMPTY')
             
-            jql = ' AND '.join(jql_parts) + ' ORDER BY priority ASC, created DESC'
+            # Add custom summary search filter
+            if summary_search:
+                # Use JQL text search operator (~) for case-insensitive search
+                jql_parts.append(f'summary ~ "{summary_search}"')
+            
+            # Add clarification filter - overrides statuses and types with specific logic
+            if filter_clarifications:
+                # Remove previous status and type filters
+                jql_parts = [part for part in jql_parts if not (part.startswith('status') or part.startswith('type'))]
+                # Add specific clarification filter logic
+                jql_parts.append('status IN ("01_To Do", "To Do", "Ready For Dev")')
+                jql_parts.append('type = Task')
+                jql_parts.append('summary ~ "clarification"')
+            
+            jql = ' AND '.join(jql_parts) + ' ORDER BY ' + ('rank' if filter_clarifications else 'priority ASC, created DESC')
             
             logger.info(f"Executing JQL: {jql}")
             
