@@ -82,7 +82,8 @@ class JiraClient:
         include_sprint_filter: bool = False,
         filter_clarifications: bool = False,
         summary_search: Optional[str] = None,
-        max_results: int = 100
+        max_results: int = 100,
+        reporters: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Search Jira issues with filters
@@ -136,6 +137,14 @@ class JiraClient:
                     priorities_str = ', '.join([f'"{p}"' for p in priorities])
                     jql_parts.append(f'priority IN ({priorities_str})')
             
+            # Add reporter filter in JQL so it is applied before max_results cap
+            if reporters:
+                if len(reporters) == 1:
+                    jql_parts.append(f'reporter = "{reporters[0]}"')
+                else:
+                    reporters_str = ', '.join([f'"{r}"' for r in reporters])
+                    jql_parts.append(f'reporter in ({reporters_str})')
+
             # Add sprint filter
             if include_sprint_filter:
                 jql_parts.append('sprint is EMPTY')
@@ -145,12 +154,16 @@ class JiraClient:
                 # Use JQL text search operator (~) for case-insensitive search
                 jql_parts.append(f'summary ~ "{summary_search}"')
             
-            # Add clarification filter - overrides statuses and types with specific logic
+            # Add clarification filter - overrides statuses, types, and summary with specific logic
             if filter_clarifications:
-                # Remove previous status and type filters
-                jql_parts = [part for part in jql_parts if not (part.startswith('status') or part.startswith('type'))]
+                # Remove previous status, type, and summary filters to avoid conflicting conditions
+                jql_parts = [part for part in jql_parts if not (
+                    part.startswith('status') or
+                    part.startswith('type') or
+                    part.startswith('summary')
+                )]
                 # Add specific clarification filter logic
-                jql_parts.append('status IN ("01_To Do", "To Do", "Ready For Dev")')
+                jql_parts.append('status IN ("01_To Do", "To Do", "Ready for Dev")')
                 jql_parts.append('type = Task')
                 jql_parts.append('summary ~ "clarification"')
             

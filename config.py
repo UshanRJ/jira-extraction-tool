@@ -6,7 +6,7 @@ Handles secure configuration for both local and Streamlit deployment
 import os
 import streamlit as st
 from typing import Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,8 @@ class JiraConfig(BaseModel):
     email: Optional[str] = Field(None, description="Jira user email for API authentication")
     api_token: Optional[str] = Field(None, description="Jira API token")
     
-    @validator('project_key')
+    @field_validator('project_key')
+    @classmethod
     def validate_project_key(cls, v):
         """Validate project key format"""
         if not v.isupper():
@@ -29,8 +30,9 @@ class JiraConfig(BaseModel):
         if not v.replace('_', '').isalnum():
             raise ValueError("Project key must be alphanumeric")
         return v
-    
-    @validator('base_url')
+
+    @field_validator('base_url')
+    @classmethod
     def validate_url(cls, v):
         """Validate URL format"""
         if not v.startswith('https://'):

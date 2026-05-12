@@ -121,16 +121,13 @@ class AuthManager:
         """Clear authentication state"""
         if 'username' in st.session_state:
             logger.info(f"User logged out: {st.session_state.username}")
-        
+
         st.session_state.authenticated = False
-        if 'username' in st.session_state:
-            del st.session_state.username
-        if 'login_time' in st.session_state:
-            del st.session_state.login_time
-        if 'data' in st.session_state:
-            del st.session_state.data
-        if 'filtered_data' in st.session_state:
-            del st.session_state.filtered_data
+        for key in ['username', 'login_time', 'data', 'filtered_data',
+                    'all_project_users', 'available_issue_types', 'config_loaded',
+                    'jira_config', 'jira_client']:
+            if key in st.session_state:
+                del st.session_state[key]
     
     def render_login_page(self):
         """Render the login page"""
