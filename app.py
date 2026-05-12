@@ -94,9 +94,14 @@ def initialize_session_state():
 
 
 def load_configuration():
-    """Load application configuration"""
+    """Load application configuration, cached per session to avoid shared singleton state"""
+    if 'jira_config' in st.session_state:
+        return st.session_state.jira_config
     try:
-        config = config_manager.get_config()
+        # Call load_config() directly to bypass the module-level cache, so each
+        # session gets its own config and stale cached values can't leak across logouts.
+        config = config_manager.load_config()
+        st.session_state.jira_config = config
         st.session_state.config_loaded = True
         return config
     except ValueError as e:
@@ -231,8 +236,10 @@ def render_sidebar(jira_client: JiraClient):
         all_project_users = st.session_state.all_project_users
         
         # Issue Type Selection
-        st.subheader("📋 Issue Type")
-        available_issue_types = jira_client.get_issue_types()
+        st.subheader("📋 Issue Type" + (" *(overridden)*" if 'filter_clarifications_cb' in st.session_state and st.session_state.filter_clarifications_cb else ""))
+        if 'available_issue_types' not in st.session_state:
+            st.session_state.available_issue_types = jira_client.get_issue_types()
+        available_issue_types = st.session_state.available_issue_types
         
         preset_options = {
             "🐛 Bugs Only": ["Bug"],
@@ -256,18 +263,30 @@ def render_sidebar(jira_client: JiraClient):
         else:
             selected_issue_types = preset_options[preset]
             st.info(f"✓ {', '.join(selected_issue_types)}")
-        
+
+        # Auto-enable clarification filter when the matching preset is chosen
+        if preset == "📝 Tasks with 'Clarification'":
+            st.session_state['filter_clarifications_cb'] = True
+
         # Special filter to include only clarification tasks
         filter_clarifications = st.checkbox(
             "📌 Filter: Title contains 'Clarification'",
+            key='filter_clarifications_cb',
             value=False,
-            help="Apply special filter: status IN ('01_To Do', 'To Do', 'Ready For Dev') AND type = Task AND summary ~ 'clarification'"
+            help="Apply special filter: status IN ('01_To Do', 'To Do', 'Ready for Dev') AND type = Task AND summary ~ 'clarification'"
         )
-        
+
+        if filter_clarifications:
+            st.warning(
+                "⚠️ **Clarification filter is active.** "
+                "Issue Type, Status, and Summary Search selections below are ignored. "
+                "Query is forced to: `type = Task AND status IN (To Do, Ready for Dev) AND summary ~ 'clarification'`"
+            )
+
         st.divider()
-        
+
         # Custom Summary Search (available for all presets)
-        st.subheader("🔎 Summary Search")
+        st.subheader("🔎 Summary Search" + (" *(overridden)*" if filter_clarifications else ""))
         summary_search_text = st.text_input(
             "Search in Summary",
             value="",
@@ -278,7 +297,7 @@ def render_sidebar(jira_client: JiraClient):
         st.divider()
         
         # Status Selection
-        st.subheader("🎯 Status")
+        st.subheader("🎯 Status" + (" *(overridden)*" if filter_clarifications else ""))
         available_statuses = jira_client.get_statuses()
         selected_statuses = st.multiselect(
             "Select Statuses",
@@ -414,7 +433,7 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
     try:
         progress_bar.progress(10, text="🔄 Connecting to Jira...")
         
-        # Fetch issues
+        # Fetch issues — reporters filtered in JQL to avoid missing results beyond max_results
         issues = jira_client.search_issues(
             issue_types=filters['issue_types'],
             statuses=filters['statuses'],
@@ -422,7 +441,8 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
             include_sprint_filter=filters['filter_no_sprint'],
             filter_clarifications=filters['filter_clarifications'],
             summary_search=filters.get('summary_search'),
-            max_results=filters['max_results']
+            max_results=filters['max_results'],
+            reporters=filters.get('reporters')
         )
         
         progress_bar.progress(50, text="📦 Processing data...")
@@ -439,12 +459,8 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
         
         progress_bar.progress(75, text="🔍 Applying filters...")
         
-        # Clarification filter is now applied at JQL level, no need for client-side filtering
-        
-        # Apply reporter filter
-        if filters['reporters']:
-            df = processor.filter_dataframe(df, reporters=filters['reporters'])
-        
+        # Clarification and reporter filters are applied at JQL level.
+
         # Apply date filter
         if filters['start_date'] or filters['end_date']:
             df = processor.filter_dataframe(
@@ -678,14 +694,16 @@ def main():
     # Load configuration
     config = load_configuration()
     
-    # Initialize Jira client
-    jira_client = JiraClient(
-        cloud_id=config.cloud_id,
-        project_key=config.project_key,
-        base_url=config.base_url,
-        email=config.email,
-        api_token=config.api_token
-    )
+    # Initialize Jira client once per session to reuse the HTTP connection pool
+    if 'jira_client' not in st.session_state:
+        st.session_state.jira_client = JiraClient(
+            cloud_id=config.cloud_id,
+            project_key=config.project_key,
+            base_url=config.base_url,
+            email=config.email,
+            api_token=config.api_token
+        )
+    jira_client = st.session_state.jira_client
     
     # Sidebar filters
     filters = render_sidebar(jira_client)

@@ -8,6 +8,7 @@ from io import BytesIO
 from datetime import datetime
 from typing import Optional
 import logging
+from openpyxl.styles import Font, PatternFill
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +121,6 @@ class DataExporter:
                 
                 # Format header row
                 for cell in worksheet[1]:
-                    cell.font = cell.font.copy(bold=True)
-                    cell.fill = cell.fill.copy(fgColor="0052CC", patternType="solid")
-                    from openpyxl.styles import Font, PatternFill
                     cell.font = Font(bold=True, color="FFFFFF")
                     cell.fill = PatternFill(start_color="0052CC", end_color="0052CC", fill_type="solid")
             
