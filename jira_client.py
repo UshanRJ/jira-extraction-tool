@@ -374,14 +374,20 @@ class JiraClient:
                 if epic is None:
                     logger.warning("Skipping None epic in results")
                     continue
+                
+                # Safely extract fields and handle potential None values
+                fields = epic.get('fields') or {}
+                status_dict = fields.get('status') or {}
+                priority_dict = fields.get('priority') or {}
+                assignee_dict = fields.get('assignee') or {}
                     
                 epic_data = {
                     'key': epic.get('key'),
-                    'summary': epic.get('fields', {}).get('summary', 'N/A'),
-                    'status': epic.get('fields', {}).get('status', {}).get('name', 'N/A'),
-                    'priority': epic.get('fields', {}).get('priority', {}).get('name', 'N/A'),
-                    'assignee': epic.get('fields', {}).get('assignee', {}).get('displayName', 'Unassigned'),
-                    'created': epic.get('fields', {}).get('created', 'N/A')
+                    'summary': fields.get('summary', 'N/A') or 'N/A',
+                    'status': status_dict.get('name', 'N/A') or 'N/A',
+                    'priority': priority_dict.get('name', 'N/A') or 'N/A',
+                    'assignee': assignee_dict.get('displayName', 'Unassigned') or 'Unassigned',
+                    'created': fields.get('created', 'N/A') or 'N/A'
                 }
                 epic_list.append(epic_data)
             
@@ -427,17 +433,24 @@ class JiraClient:
                 
                 issues_with_details = []
                 for issue in linked_issues:
+                    if issue is None:
+                        continue
                     issue_key = issue.get('key')
-                    issue_fields = issue.get('fields', {})
+                    issue_fields = issue.get('fields') or {}
+                    
+                    status_dict = issue_fields.get('status') or {}
+                    priority_dict = issue_fields.get('priority') or {}
+                    assignee_dict = issue_fields.get('assignee') or {}
+                    issuetype_dict = issue_fields.get('issuetype') or {}
                     
                     issue_data = {
                         'key': issue_key,
-                        'summary': issue_fields.get('summary', 'N/A'),
-                        'type': issue_fields.get('issuetype', {}).get('name', 'N/A'),
-                        'status': issue_fields.get('status', {}).get('name', 'N/A'),
-                        'priority': issue_fields.get('priority', {}).get('name', 'N/A'),
-                        'assignee': issue_fields.get('assignee', {}).get('displayName', 'Unassigned'),
-                        'created': issue_fields.get('created', 'N/A'),
+                        'summary': issue_fields.get('summary', 'N/A') or 'N/A',
+                        'type': issuetype_dict.get('name', 'N/A') or 'N/A',
+                        'status': status_dict.get('name', 'N/A') or 'N/A',
+                        'priority': priority_dict.get('name', 'N/A') or 'N/A',
+                        'assignee': assignee_dict.get('displayName', 'Unassigned') or 'Unassigned',
+                        'created': issue_fields.get('created', 'N/A') or 'N/A',
                         'has_subtasks': bool(issue_fields.get('subtasks', []))
                     }
                     
@@ -458,15 +471,20 @@ class JiraClient:
                             
                             if subtask_issues:
                                 st = subtask_issues[0]
-                                st_fields = st.get('fields', {})
-                                subtasks.append({
-                                    'key': subtask_key,
-                                    'summary': st_fields.get('summary', 'N/A'),
-                                    'status': st_fields.get('status', {}).get('name', 'N/A'),
-                                    'priority': st_fields.get('priority', {}).get('name', 'N/A'),
-                                    'assignee': st_fields.get('assignee', {}).get('displayName', 'Unassigned'),
-                                    'created': st_fields.get('created', 'N/A')
-                                })
+                                if st:
+                                    st_fields = st.get('fields') or {}
+                                    st_status_dict = st_fields.get('status') or {}
+                                    st_priority_dict = st_fields.get('priority') or {}
+                                    st_assignee_dict = st_fields.get('assignee') or {}
+                                    
+                                    subtasks.append({
+                                        'key': subtask_key,
+                                        'summary': st_fields.get('summary', 'N/A') or 'N/A',
+                                        'status': st_status_dict.get('name', 'N/A') or 'N/A',
+                                        'priority': st_priority_dict.get('name', 'N/A') or 'N/A',
+                                        'assignee': st_assignee_dict.get('displayName', 'Unassigned') or 'Unassigned',
+                                        'created': st_fields.get('created', 'N/A') or 'N/A'
+                                    })
                     
                     issue_data['subtasks'] = subtasks
                     issues_with_details.append(issue_data)
