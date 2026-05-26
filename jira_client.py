@@ -210,8 +210,8 @@ class JiraClient:
         iteration = 0
 
         try:
-            logger.debug(f"Executing JQL: {jql}")
-            logger.debug(f"Fields: {selected_fields}")
+            logger.info(f"[JQL] Executing: {jql}")
+            logger.info(f"[JQL] Fields: {selected_fields}")
             
             while iteration < max_iterations:
                 iteration += 1
@@ -232,12 +232,18 @@ class JiraClient:
                 response = self.session.get(url, params=params, timeout=30)
                 data = self._handle_response(response)
 
+                # Log response structure on first iteration
+                if iteration == 1:
+                    logger.info(f"[RESPONSE] Keys: {list(data.keys())}")
+                    logger.info(f"[RESPONSE] Total: {data.get('total', 'MISSING')}")
+                    logger.info(f"[RESPONSE] MaxResults: {data.get('maxResults', 'MISSING')}")
+
                 issues = data.get('issues', [])
                 collected_issues.extend(issues)
 
                 total = data.get('total')
                 logger.info(
-                    f"Retrieved {len(issues)} issues from Jira (startAt={start_at}, total={total if total is not None else 'unknown'})"
+                    f"Retrieved {len(issues)} issues from Jira (iteration={iteration}, startAt={start_at}, total={total if total is not None else 'unknown'})"
                 )
 
                 # Break if we got fewer results than requested (indicates end of results)
