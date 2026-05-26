@@ -397,16 +397,15 @@ class JiraClient:
             "Ushan Jayakody"
         ]
     
-    def get_epic_hierarchy(self) -> List[Dict[str, Any]]:
+    def get_epics(self) -> List[Dict[str, Any]]:
         """
-        Fetch all epics in the project with their linked issues (stories, tasks, subtasks)
-        organized hierarchically.
+        Fetch all epics in the project (without linked issues).
         
         Returns:
-            List of epic dictionaries with linked issues
+            List of epic dictionaries with basic information
         """
         try:
-            logger.info(f"Fetching epic hierarchy for project {self.project_key}")
+            logger.info(f"Fetching epics for project {self.project_key}")
             
             # Fetch all epics in the project
             epics = self._execute_jql_search(
@@ -415,31 +414,52 @@ class JiraClient:
                 fields=['summary', 'status', 'priority', 'assignee', 'created', 'updated']
             )
             
-            epic_hierarchy = []
-            
+            epic_list = []
             for epic in epics:
-                epic_key = epic.get('key')
-                epic_fields = epic.get('fields', {})
-                
-                # Fetch issues linked to this epic
+                epic_data = {
+                    'key': epic.get('key'),
+                    'summary': epic.get('fields', {}).get('summary', 'N/A'),
+                    'status': epic.get('fields', {}).get('status', {}).get('name', 'N/A'),
+                    'priority': epic.get('fields', {}).get('priority', {}).get('name', 'N/A'),
+                    'assignee': epic.get('fields', {}).get('assignee', {}).get('displayName', 'Unassigned'),
+                    'created': epic.get('fields', {}).get('created', 'N/A')
+                }
+                epic_list.append(epic_data)
+            
+            logger.info(f"Retrieved {len(epic_list)} epics")
+            return epic_list
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch epics: {str(e)}")
+            raise JiraAPIError(f"Failed to fetch epics: {str(e)}")
+    
+    def get_epic_linked_issues(self, epic_keys: List[str]) -> List[Dict[str, Any]]:
+        """
+        Fetch linked issues for one or more epics.
+        
+        Args:
+            epic_keys: List of epic keys to fetch issues for
+        
+        Returns:
+            List of issues linked to the specified epics organized by epic
+        """
+        try:
+            if not epic_keys:
+                return []
+            
+            logger.info(f"Fetching linked issues for epics: {epic_keys}")
+            
+            result = []
+            
+            # Fetch issues for each epic
+            for epic_key in epic_keys:
                 linked_issues = self._execute_jql_search(
                     f'project = {self.project_key} AND "Epic Link" = {epic_key} ORDER BY priority ASC, created DESC',
                     max_results=None,
                     fields=['summary', 'status', 'priority', 'assignee', 'issuetype', 'parent', 'created']
                 )
                 
-                epic_data = {
-                    'key': epic_key,
-                    'summary': epic_fields.get('summary', 'N/A'),
-                    'status': epic_fields.get('status', {}).get('name', 'N/A'),
-                    'priority': epic_fields.get('priority', {}).get('name', 'N/A'),
-                    'assignee': epic_fields.get('assignee', {}).get('displayName', 'Unassigned'),
-                    'created': epic_fields.get('created', 'N/A'),
-                    'issue_count': len(linked_issues),
-                    'linked_issues': []
-                }
-                
-                # Organize linked issues by type and hierarchy
+                issues_with_details = []
                 for issue in linked_issues:
                     issue_key = issue.get('key')
                     issue_fields = issue.get('fields', {})
@@ -480,13 +500,16 @@ class JiraClient:
                                 })
                     
                     issue_data['subtasks'] = subtasks
-                    epic_data['linked_issues'].append(issue_data)
+                    issues_with_details.append(issue_data)
                 
-                epic_hierarchy.append(epic_data)
+                result.append({
+                    'epic_key': epic_key,
+                    'issues': issues_with_details
+                })
             
-            logger.info(f"Retrieved {len(epic_hierarchy)} epics with {sum(e['issue_count'] for e in epic_hierarchy)} linked issues")
-            return epic_hierarchy
+            logger.info(f"Retrieved linked issues for {len(epic_keys)} epics")
+            return result
             
         except Exception as e:
-            logger.error(f"Failed to fetch epic hierarchy: {str(e)}")
-            raise JiraAPIError(f"Failed to fetch epic hierarchy: {str(e)}")
+            logger.error(f"Failed to fetch linked issues: {str(e)}")
+            raise JiraAPIError(f"Failed to fetch linked issues: {str(e)}")

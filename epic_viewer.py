@@ -12,29 +12,29 @@ from jira_client import JiraClient, JiraAPIError
 logger = logging.getLogger(__name__)
 
 
-def flatten_epic_data(epic_hierarchy: List[Dict[str, Any]]) -> pd.DataFrame:
+def flatten_epic_data_with_issues(selected_epics: List[str], epic_issues_map: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
     """
-    Flatten the nested epic hierarchy into a DataFrame for easier filtering and display.
+    Flatten the epic and issue data into a DataFrame for easier filtering and display.
     
     Args:
-        epic_hierarchy: List of epic dictionaries with nested issues and subtasks
+        selected_epics: List of selected epic keys
+        epic_issues_map: Dictionary mapping epic keys to their linked issues
     
     Returns:
-        DataFrame with columns: Epic, Epic_Key, Epic_Priority, Epic_Status, 
-                               Issue, Issue_Key, Issue_Type, Issue_Priority, Issue_Status, Issue_Assignee,
-                               Subtask, Subtask_Key, Subtask_Priority, Subtask_Status, Subtask_Assignee
+        DataFrame with flattened hierarchy
     """
     rows = []
     
-    for epic in epic_hierarchy:
-        if not epic.get('linked_issues'):
+    for epic_key in selected_epics:
+        if epic_key not in epic_issues_map:
+            continue
+            
+        issues = epic_issues_map[epic_key]
+        
+        if not issues:
             # Epic with no linked issues
             rows.append({
-                'Epic': epic['summary'],
-                'Epic_Key': epic['key'],
-                'Epic_Priority': epic['priority'],
-                'Epic_Status': epic['status'],
-                'Epic_Assignee': epic['assignee'],
+                'Epic_Key': epic_key,
                 'Issue': None,
                 'Issue_Key': None,
                 'Issue_Type': None,
@@ -49,15 +49,11 @@ def flatten_epic_data(epic_hierarchy: List[Dict[str, Any]]) -> pd.DataFrame:
                 'Level': 'Epic'
             })
         else:
-            for issue in epic['linked_issues']:
+            for issue in issues:
                 if not issue.get('subtasks'):
                     # Issue with no subtasks
                     rows.append({
-                        'Epic': epic['summary'],
-                        'Epic_Key': epic['key'],
-                        'Epic_Priority': epic['priority'],
-                        'Epic_Status': epic['status'],
-                        'Epic_Assignee': epic['assignee'],
+                        'Epic_Key': epic_key,
                         'Issue': issue['summary'],
                         'Issue_Key': issue['key'],
                         'Issue_Type': issue['type'],
@@ -74,11 +70,7 @@ def flatten_epic_data(epic_hierarchy: List[Dict[str, Any]]) -> pd.DataFrame:
                 else:
                     for subtask in issue['subtasks']:
                         rows.append({
-                            'Epic': epic['summary'],
-                            'Epic_Key': epic['key'],
-                            'Epic_Priority': epic['priority'],
-                            'Epic_Status': epic['status'],
-                            'Epic_Assignee': epic['assignee'],
+                            'Epic_Key': epic_key,
                             'Issue': issue['summary'],
                             'Issue_Key': issue['key'],
                             'Issue_Type': issue['type'],
@@ -107,18 +99,10 @@ def render_epic_filters(df: pd.DataFrame) -> Dict[str, Any]:
     Returns:
         Dictionary of selected filters
     """
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        available_epics = sorted(df['Epic'].dropna().unique())
-        selected_epics = st.multiselect(
-            "📚 Filter by Epic",
-            options=available_epics,
-            help="Select one or more epics"
-        )
-    
-    with col2:
-        available_priorities = sorted(df['Epic_Priority'].dropna().unique(), 
+        available_priorities = sorted(df['Issue_Priority'].dropna().unique(), 
                                      key=lambda x: (x.startswith('P'), x))
         selected_priorities = st.multiselect(
             "⚡ Filter by Priority",
@@ -127,7 +111,7 @@ def render_epic_filters(df: pd.DataFrame) -> Dict[str, Any]:
             help="Select one or more priorities"
         )
     
-    with col3:
+    with col2:
         available_assignees = sorted(df['Issue_Assignee'].dropna().unique())
         selected_assignees = st.multiselect(
             "👤 Filter by Assignee",
@@ -135,7 +119,7 @@ def render_epic_filters(df: pd.DataFrame) -> Dict[str, Any]:
             help="Select one or more assignees"
         )
     
-    with col4:
+    with col3:
         available_statuses = sorted(df['Issue_Status'].dropna().unique())
         selected_statuses = st.multiselect(
             "🎯 Filter by Status",
@@ -144,7 +128,6 @@ def render_epic_filters(df: pd.DataFrame) -> Dict[str, Any]:
         )
     
     return {
-        'epics': selected_epics,
         'priorities': selected_priorities,
         'assignees': selected_assignees,
         'statuses': selected_statuses
@@ -164,19 +147,12 @@ def apply_epic_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFram
     """
     filtered_df = df.copy()
     
-    # Apply epic filter
-    if filters['epics']:
-        filtered_df = filtered_df[
-            (filtered_df['Epic'].isin(filters['epics'])) | 
-            (filtered_df['Epic'].isna())
-        ]
-    
-    # Apply priority filter (check both epic and issue priorities)
+    # Apply priority filter
     if filters['priorities']:
         filtered_df = filtered_df[
-            (filtered_df['Epic_Priority'].isin(filters['priorities'])) |
             (filtered_df['Issue_Priority'].isin(filters['priorities'])) |
-            (filtered_df['Subtask_Priority'].isin(filters['priorities']))
+            (filtered_df['Subtask_Priority'].isin(filters['priorities'])) |
+            (filtered_df['Issue_Priority'].isna())
         ]
     
     # Apply assignee filter
@@ -205,15 +181,13 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
         base_url: Base URL of the Jira instance
     """
     if df.empty:
-        st.warning("⚠️ No epics found matching the filters")
+        st.warning("⚠️ No issues found matching the filters")
         return
-    
-    st.subheader(f"📊 Epic Hierarchy ({len(df)} items)")
     
     # Display statistics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        unique_epics = df['Epic'].dropna().nunique()
+        unique_epics = df['Epic_Key'].dropna().nunique()
         st.metric("📚 Epics", unique_epics)
     with col2:
         unique_issues = df['Issue_Key'].dropna().nunique()
@@ -246,17 +220,12 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
     
     # Select columns to display
     columns_to_show = [
-        'Epic', 'Epic_Link', 'Epic_Priority', 'Epic_Status',
-        'Issue', 'Issue_Link', 'Issue_Type', 'Issue_Priority', 'Issue_Status', 'Issue_Assignee',
+        'Epic_Link', 'Issue_Link', 'Issue_Type', 'Issue_Priority', 'Issue_Status', 'Issue_Assignee',
         'Subtask', 'Subtask_Link', 'Subtask_Priority', 'Subtask_Status', 'Subtask_Assignee'
     ]
     
     display_columns = {
-        'Epic': 'Epic Summary',
-        'Epic_Link': 'Epic Key',
-        'Epic_Priority': 'Epic Priority',
-        'Epic_Status': 'Epic Status',
-        'Issue': 'Issue/Story Summary',
+        'Epic_Link': 'Epic',
         'Issue_Link': 'Issue Key',
         'Issue_Type': 'Type',
         'Issue_Priority': 'Priority',
@@ -276,7 +245,7 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
     
     # Also provide downloadable CSV
     st.divider()
-    csv = df.to_csv(index=False)
+    csv = display_df[['Epic_Key', 'Issue', 'Issue_Key', 'Issue_Type', 'Issue_Priority', 'Issue_Status', 'Issue_Assignee', 'Subtask', 'Subtask_Key', 'Subtask_Priority', 'Subtask_Status', 'Subtask_Assignee']].to_csv(index=False)
     st.download_button(
         label="📥 Download as CSV",
         data=csv,
@@ -287,7 +256,7 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
 
 def render_epic_viewer(jira_client: JiraClient, base_url: str) -> None:
     """
-    Main epic viewer interface.
+    Main epic viewer interface with two-step workflow: 1) Load epics 2) Select epics and fetch issues.
     
     Args:
         jira_client: Initialized Jira client
@@ -295,37 +264,93 @@ def render_epic_viewer(jira_client: JiraClient, base_url: str) -> None:
     """
     st.subheader("🏛️ Epic Hierarchy View")
     
-    # Fetch epic hierarchy
-    if st.button("🔄 Load Epic Hierarchy", type="primary", use_container_width=True):
-        try:
-            with st.spinner("📡 Fetching epic hierarchy from Jira..."):
-                epic_hierarchy = jira_client.get_epic_hierarchy()
-                st.session_state.epic_hierarchy = epic_hierarchy
-                st.success(f"✅ Loaded {len(epic_hierarchy)} epics")
-        except JiraAPIError as e:
-            st.error(f"❌ Jira API Error: {str(e)}")
-            logger.error(f"Jira API error: {str(e)}")
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            logger.error(f"Error: {str(e)}", exc_info=True)
+    # Step 1: Load epics if not already loaded
+    if 'epics_list' not in st.session_state:
+        st.session_state.epics_list = []
+        st.session_state.epic_issues_map = {}
     
-    # Display epic data if available
-    if 'epic_hierarchy' in st.session_state and st.session_state.epic_hierarchy:
-        st.divider()
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("**Step 1: Load Epics**")
+    with col2:
+        if st.button("🔄 Load Epics", type="primary", use_container_width=True):
+            try:
+                with st.spinner("📡 Fetching epics from Jira..."):
+                    epics = jira_client.get_epics()
+                    st.session_state.epics_list = epics
+                    st.session_state.epic_issues_map = {}
+                    st.success(f"✅ Loaded {len(epics)} epics")
+            except JiraAPIError as e:
+                st.error(f"❌ Jira API Error: {str(e)}")
+                logger.error(f"Jira API error: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                logger.error(f"Error: {str(e)}", exc_info=True)
+    
+    st.divider()
+    
+    # Step 2: Select epics and fetch linked issues
+    if st.session_state.epics_list:
+        epic_options = {epic['key']: f"{epic['key']} - {epic['summary']}" for epic in st.session_state.epics_list}
         
-        # Flatten data for display and filtering
-        df = flatten_epic_data(st.session_state.epic_hierarchy)
+        st.markdown("**Step 2: Select Epics**")
+        selected_epic_keys = st.multiselect(
+            "Choose one or more epics to view their issues",
+            options=list(epic_options.keys()),
+            format_func=lambda x: epic_options[x],
+            help="Select epics to load their linked issues, stories, tasks, and subtasks"
+        )
         
-        # Render filters
-        st.subheader("🔍 Filters")
-        filters = render_epic_filters(df)
-        
-        # Apply filters
-        filtered_df = apply_epic_filters(df, filters)
-        
-        st.divider()
-        
-        # Render table
-        render_epic_table(filtered_df, base_url)
+        if selected_epic_keys:
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.markdown(f"**Step 3: View Issues** ({len(selected_epic_keys)} epic(s) selected)")
+            with col2:
+                if st.button("📥 Fetch Issues for Selected Epics", type="primary", use_container_width=True):
+                    try:
+                        with st.spinner(f"📡 Fetching issues for {len(selected_epic_keys)} epic(s)..."):
+                            issues_result = jira_client.get_epic_linked_issues(selected_epic_keys)
+                            
+                            # Reorganize result into map
+                            epic_issues_map = {}
+                            for item in issues_result:
+                                epic_issues_map[item['epic_key']] = item['issues']
+                            
+                            st.session_state.epic_issues_map = epic_issues_map
+                            
+                            total_issues = sum(len(issues) for issues in epic_issues_map.values())
+                            st.success(f"✅ Fetched {total_issues} issues for {len(selected_epic_keys)} epic(s)")
+                    except JiraAPIError as e:
+                        st.error(f"❌ Jira API Error: {str(e)}")
+                        logger.error(f"Jira API error: {str(e)}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+                        logger.error(f"Error: {str(e)}", exc_info=True)
+            
+            st.divider()
+            
+            # Display issues if they have been fetched
+            if st.session_state.epic_issues_map:
+                # Flatten data for display and filtering
+                df = flatten_epic_data_with_issues(selected_epic_keys, st.session_state.epic_issues_map)
+                
+                if not df.empty:
+                    # Render filters
+                    st.subheader("🔍 Filters")
+                    filters = render_epic_filters(df)
+                    
+                    # Apply filters
+                    filtered_df = apply_epic_filters(df, filters)
+                    
+                    st.divider()
+                    
+                    # Render table
+                    st.subheader(f"📊 Epic Hierarchy ({len(filtered_df)} items)")
+                    render_epic_table(filtered_df, base_url)
+                else:
+                    st.info("💡 No issues found for the selected epics")
+        else:
+            st.info("💡 Select one or more epics to fetch their issues")
     else:
-        st.info("💡 Click 'Load Epic Hierarchy' to fetch epics and their related issues from Jira")
+        st.info("💡 Click 'Load Epics' to fetch epics from Jira")
