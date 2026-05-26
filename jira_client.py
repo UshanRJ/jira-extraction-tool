@@ -79,6 +79,9 @@ class JiraClient:
             return response.json()
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error occurred: {e}")
+            error_body = response.text.strip()
+            if error_body:
+                logger.error(f"Jira error response body: {error_body}")
             if response.status_code == 401:
                 raise JiraAPIError("Authentication failed. Check your credentials.")
             elif response.status_code == 403:
@@ -86,7 +89,8 @@ class JiraClient:
             elif response.status_code == 404:
                 raise JiraAPIError("Resource not found.")
             else:
-                raise JiraAPIError(f"HTTP {response.status_code}: {str(e)}")
+                detail = error_body if error_body else str(e)
+                raise JiraAPIError(f"HTTP {response.status_code}: {detail}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Request failed: {e}")
             raise JiraAPIError(f"Network error: {str(e)}")
@@ -195,9 +199,9 @@ class JiraClient:
     
     def _execute_jql_search(self, jql: str, max_results: Optional[int] = None, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Execute JQL search using the /rest/api/3/search/jql endpoint
+        Execute JQL search using Jira's standard search endpoint
         """
-        url = f"{self.base_url}/rest/api/3/search/jql"
+        url = f"{self.base_url}/rest/api/3/search"
         selected_fields = fields or ['summary', 'status', 'priority', 'reporter', 'parent', 'created']
         collected_issues: List[Dict[str, Any]] = []
         page_size = 100

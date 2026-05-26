@@ -239,15 +239,6 @@ def render_sidebar(jira_client: JiraClient):
             "Ushan Jayakody"
         ]
         
-        # Fetch all project users for reporter filter
-        # Cache this in session state to avoid repeated API calls
-        if 'all_project_users' not in st.session_state:
-            with st.spinner("Loading project users from Jira..."):
-                st.session_state.all_project_users = jira_client.get_project_users()
-                logger.info(f"Loaded {len(st.session_state.all_project_users)} users from Jira: {st.session_state.all_project_users}")
-        
-        all_project_users = st.session_state.all_project_users
-        
         # Issue Type Selection
         st.subheader("📋 Issue Type" + (" *(overridden)*" if 'filter_clarifications_cb' in st.session_state and st.session_state.filter_clarifications_cb else ""))
         if 'available_issue_types' not in st.session_state:
@@ -345,21 +336,17 @@ def render_sidebar(jira_client: JiraClient):
         if reporter_filter_type == "QA Team Only":
             selected_reporters = QA_REPORTERS
             st.success(f"✓ {len(QA_REPORTERS)} QA team members")
-            with st.expander("👥 QA Team Members"):
-                for member in QA_REPORTERS:
-                    in_jira = "✅" if member in all_project_users else "⚠️ (not in Jira)"
-                    st.caption(f"{in_jira} {member}")
         elif reporter_filter_type == "Custom Selection":
             selected_reporters = st.multiselect(
                 "Select Reporters",
-                options=all_project_users,
-                help="Select specific reporters from all project users"
+                options=QA_REPORTERS,
+                help="Select specific reporters from the QA team list"
             )
             if selected_reporters:
                 st.info(f"✓ {len(selected_reporters)} reporter(s) selected")
         else:
             selected_reporters = None
-            st.info(f"📊 All reporters ({len(all_project_users)} total)")
+            st.info(f"📊 All reporters ({len(QA_REPORTERS)} QA team members)")
         
         st.divider()
         
