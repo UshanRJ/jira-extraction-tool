@@ -240,8 +240,68 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
     
     table_df = display_df[columns_to_show].rename(columns=display_columns)
     
-    # Display as markdown table for clickable links
-    st.markdown(table_df.to_markdown(index=False), unsafe_allow_html=True)
+    # Use pandas to_html instead of to_markdown (which requires tabulate)
+    # Wrap in a custom styled div for better UI/UX
+    html_table = table_df.to_html(
+        index=False,
+        escape=False, # Important for retaining our HTML links
+        justify='left',
+        classes=['jira-table']
+    )
+    
+    # Custom CSS for a calming, modern, pleasing theme
+    st.markdown("""
+        <style>
+        .jira-table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        table.jira-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.9em;
+            background-color: #ffffff;
+            color: #333333;
+        }
+        table.jira-table thead th {
+            background-color: #f4f6f8;
+            color: #2c3e50;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 2px solid #e0e6ed;
+            font-weight: 600;
+        }
+        table.jira-table tbody tr {
+            border-bottom: 1px solid #e0e6ed;
+            transition: background-color 0.2s ease;
+        }
+        table.jira-table tbody tr:nth-of-type(even) {
+            background-color: #fbfcfd;
+        }
+        table.jira-table tbody tr:hover {
+            background-color: #f0f4f8;
+        }
+        table.jira-table td {
+            padding: 10px 15px;
+            vertical-align: middle;
+        }
+        table.jira-table a {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        table.jira-table a:hover {
+            text-decoration: underline;
+            color: #2980b9;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Render the styled table
+    st.markdown(f'<div class="jira-table-container">{html_table}</div>', unsafe_allow_html=True)
     
     # Also provide downloadable CSV
     st.divider()
