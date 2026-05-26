@@ -309,53 +309,13 @@ class JiraClient:
         return ['P0', 'P1', 'P2', 'P3', 'P4', 'None']
     
     def get_project_users(self) -> List[str]:
-        """Get all users with access to the project using the project members endpoint"""
+        """Get all users with access to the project by fetching reporters from project issues"""
         try:
-            # First, try fetching from project members endpoint (most reliable)
-            url = f"{self.base_url}/rest/api/3/project/{self.project_key}/members"
-            all_members = []
-            start_at = 0
-            page_size = 100
-            
-            while True:
-                self._rate_limit()
-                params = {
-                    'startAt': start_at,
-                    'maxResults': page_size
-                }
-                response = self.session.get(url, params=params, timeout=30)
-                
-                try:
-                    data = self._handle_response(response)
-                except Exception as e:
-                    logger.warning(f"Failed to fetch project members from members endpoint: {str(e)}")
-                    # Fall back to fetching reporters from issues
-                    return self._get_reporters_from_issues()
-                
-                members = data.get('values', [])
-                all_members.extend(members)
-                
-                if len(members) < page_size:
-                    break
-                
-                start_at += page_size
-            
-            # Extract user display names
-            user_names = set()
-            for member in all_members:
-                displayName = member.get('displayName')
-                if displayName:
-                    user_names.add(displayName)
-            
-            user_list = sorted(user_names)
-            logger.info(f"Retrieved {len(user_list)} project members for {self.project_key}")
-            
-            return user_list if user_list else self._get_default_qa_team()
-            
-        except Exception as e:
-            logger.warning(f"Failed to get project members: {str(e)}")
-            # Fall back to fetching reporters from issues
+            logger.info(f"Fetching project users from issue reporters for {self.project_key}")
             return self._get_reporters_from_issues()
+        except Exception as e:
+            logger.warning(f"Failed to get project users: {str(e)}")
+            return self._get_default_qa_team()
     
     def _get_reporters_from_issues(self) -> List[str]:
         """Fallback: Get all unique reporters from all project issues"""
