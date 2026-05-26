@@ -218,7 +218,7 @@ class JiraClient:
                     'fields': ','.join(selected_fields)
                 }
 
-                response = self.session.post(url, params=params, timeout=30)
+                response = self.session.get(url, params=params, timeout=30)
                 data = self._handle_response(response)
 
                 issues = data.get('issues', [])
