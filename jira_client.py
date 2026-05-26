@@ -337,9 +337,16 @@ class JiraClient:
         try:
             logger.info(f"Fetching epics for project {self.project_key}")
             
-            # Fetch all epics in the project using simple JQL - type value must be quoted
+            # Build JQL query using the same proper method as search_issues
+            jql_parts = [f'project = {self.project_key}']
+            self._append_equals_clause(jql_parts, 'type', ['Epic'])
+            jql = ' AND '.join(jql_parts)
+            
+            logger.info(f"[EPIC_QUERY] JQL: {jql}")
+            
+            # Fetch all epics in the project using proper JQL construction
             epics = self._execute_jql_search(
-                f'project = {self.project_key} AND type = "Epic"',
+                jql,
                 max_results=None,
                 fields=['summary', 'status', 'priority', 'assignee', 'created']
             )
@@ -388,8 +395,15 @@ class JiraClient:
             
             # Fetch issues for each epic
             for epic_key in epic_keys:
+                # Build JQL with proper quoting for epic key value
+                jql_parts = [f'project = {self.project_key}']
+                self._append_equals_clause(jql_parts, '"Epic Link"', [epic_key])
+                jql = ' AND '.join(jql_parts)
+                
+                logger.info(f"[EPIC_LINK_QUERY] Fetching issues for {epic_key}: {jql}")
+                
                 linked_issues = self._execute_jql_search(
-                    f'project = {self.project_key} AND "Epic Link" = {epic_key}',
+                    jql,
                     max_results=None,
                     fields=['summary', 'status', 'priority', 'assignee', 'issuetype', 'parent', 'created']
                 )
@@ -415,9 +429,12 @@ class JiraClient:
                     if issue_fields.get('subtasks'):
                         for subtask in issue_fields.get('subtasks', []):
                             subtask_key = subtask.get('key')
-                            # Fetch subtask details
+                            # Fetch subtask details using proper JQL quoting
+                            subtask_jql = f'key = "{subtask_key}"'
+                            logger.info(f"[SUBTASK_QUERY] Fetching {subtask_key}: {subtask_jql}")
+                            
                             subtask_issues = self._execute_jql_search(
-                                f'key = {subtask_key}',
+                                subtask_jql,
                                 max_results=1,
                                 fields=['summary', 'status', 'priority', 'assignee', 'created']
                             )
