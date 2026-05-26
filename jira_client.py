@@ -396,3 +396,97 @@ class JiraClient:
             "Rukshani Jayathilaka",
             "Ushan Jayakody"
         ]
+    
+    def get_epic_hierarchy(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all epics in the project with their linked issues (stories, tasks, subtasks)
+        organized hierarchically.
+        
+        Returns:
+            List of epic dictionaries with linked issues
+        """
+        try:
+            logger.info(f"Fetching epic hierarchy for project {self.project_key}")
+            
+            # Fetch all epics in the project
+            epics = self._execute_jql_search(
+                f'project = {self.project_key} AND type = Epic ORDER BY priority ASC, created DESC',
+                max_results=None,
+                fields=['summary', 'status', 'priority', 'assignee', 'created', 'updated']
+            )
+            
+            epic_hierarchy = []
+            
+            for epic in epics:
+                epic_key = epic.get('key')
+                epic_fields = epic.get('fields', {})
+                
+                # Fetch issues linked to this epic
+                linked_issues = self._execute_jql_search(
+                    f'project = {self.project_key} AND "Epic Link" = {epic_key} ORDER BY priority ASC, created DESC',
+                    max_results=None,
+                    fields=['summary', 'status', 'priority', 'assignee', 'issuetype', 'parent', 'created']
+                )
+                
+                epic_data = {
+                    'key': epic_key,
+                    'summary': epic_fields.get('summary', 'N/A'),
+                    'status': epic_fields.get('status', {}).get('name', 'N/A'),
+                    'priority': epic_fields.get('priority', {}).get('name', 'N/A'),
+                    'assignee': epic_fields.get('assignee', {}).get('displayName', 'Unassigned'),
+                    'created': epic_fields.get('created', 'N/A'),
+                    'issue_count': len(linked_issues),
+                    'linked_issues': []
+                }
+                
+                # Organize linked issues by type and hierarchy
+                for issue in linked_issues:
+                    issue_key = issue.get('key')
+                    issue_fields = issue.get('fields', {})
+                    
+                    issue_data = {
+                        'key': issue_key,
+                        'summary': issue_fields.get('summary', 'N/A'),
+                        'type': issue_fields.get('issuetype', {}).get('name', 'N/A'),
+                        'status': issue_fields.get('status', {}).get('name', 'N/A'),
+                        'priority': issue_fields.get('priority', {}).get('name', 'N/A'),
+                        'assignee': issue_fields.get('assignee', {}).get('displayName', 'Unassigned'),
+                        'created': issue_fields.get('created', 'N/A'),
+                        'has_subtasks': bool(issue_fields.get('subtasks', []))
+                    }
+                    
+                    # Fetch subtasks if they exist
+                    subtasks = []
+                    if issue_fields.get('subtasks'):
+                        for subtask in issue_fields.get('subtasks', []):
+                            subtask_key = subtask.get('key')
+                            # Fetch subtask details
+                            subtask_issues = self._execute_jql_search(
+                                f'key = {subtask_key}',
+                                max_results=1,
+                                fields=['summary', 'status', 'priority', 'assignee', 'created']
+                            )
+                            
+                            if subtask_issues:
+                                st = subtask_issues[0]
+                                st_fields = st.get('fields', {})
+                                subtasks.append({
+                                    'key': subtask_key,
+                                    'summary': st_fields.get('summary', 'N/A'),
+                                    'status': st_fields.get('status', {}).get('name', 'N/A'),
+                                    'priority': st_fields.get('priority', {}).get('name', 'N/A'),
+                                    'assignee': st_fields.get('assignee', {}).get('displayName', 'Unassigned'),
+                                    'created': st_fields.get('created', 'N/A')
+                                })
+                    
+                    issue_data['subtasks'] = subtasks
+                    epic_data['linked_issues'].append(issue_data)
+                
+                epic_hierarchy.append(epic_data)
+            
+            logger.info(f"Retrieved {len(epic_hierarchy)} epics with {sum(e['issue_count'] for e in epic_hierarchy)} linked issues")
+            return epic_hierarchy
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch epic hierarchy: {str(e)}")
+            raise JiraAPIError(f"Failed to fetch epic hierarchy: {str(e)}")

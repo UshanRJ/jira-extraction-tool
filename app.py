@@ -14,6 +14,7 @@ from config import config_manager
 from jira_client import JiraClient, JiraAPIError
 from data_processor import DataProcessor
 from utils import setup_logging, InputValidator, ValidationError, DataExporter, ExportError
+from epic_viewer import render_epic_viewer
 
 # Setup logging
 setup_logging(log_level="INFO", log_to_file=True)
@@ -708,37 +709,45 @@ def main():
     # Sidebar filters
     filters = render_sidebar(jira_client)
     
-    # Main content area
+    # Main content area with tabs
     col1, col2 = st.columns([3, 1])
     
     with col1:
         st.subheader(f"📁 Project: Intellisight Plus ({config.project_key})")
     
-    with col2:
-        if st.button("🔄 Fetch Data", type="primary", use_container_width=True):
-            df = fetch_data(jira_client, filters, config.base_url)
+    # Tab navigation
+    tab1, tab2 = st.tabs(["📋 Issues View", "🏛️ Epic Hierarchy"])
     
-    # Display data if available
-    if st.session_state.data is not None:
-        st.divider()
-        render_summary_stats(st.session_state.data)
-        st.divider()
-        render_data_table(st.session_state.data)
-        st.divider()
-        render_export_section()
-    else:
-        # Show helpful getting started info
-        st.markdown("""
-        <div class="info-box">
-            <h3>👋 Getting Started</h3>
-            <ol>
-                <li>Configure your <strong>filters</strong> in the sidebar</li>
-                <li>Click <strong>"🔄 Fetch Data"</strong> to retrieve issues</li>
-                <li>Review the results and statistics</li>
-                <li>Export to <strong>Excel</strong> (with clickable links) or <strong>CSV</strong></li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
+    with tab1:
+        with col2:
+            if st.button("🔄 Fetch Data", type="primary", use_container_width=True, key="fetch_issues"):
+                df = fetch_data(jira_client, filters, config.base_url)
+        
+        # Display data if available
+        if st.session_state.data is not None:
+            st.divider()
+            render_summary_stats(st.session_state.data)
+            st.divider()
+            render_data_table(st.session_state.data)
+            st.divider()
+            render_export_section()
+        else:
+            # Show helpful getting started info
+            st.markdown("""
+            <div class="info-box">
+                <h3>👋 Getting Started</h3>
+                <ol>
+                    <li>Configure your <strong>filters</strong> in the sidebar</li>
+                    <li>Click <strong>"🔄 Fetch Data"</strong> to retrieve issues</li>
+                    <li>Review the results and statistics</li>
+                    <li>Export to <strong>Excel</strong> (with clickable links) or <strong>CSV</strong></li>
+                </ol>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with tab2:
+        # Epic hierarchy view
+        render_epic_viewer(jira_client, config.base_url)
     
     # Footer
     st.divider()
