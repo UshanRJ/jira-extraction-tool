@@ -230,6 +230,11 @@ def render_sidebar(jira_client: JiraClient):
     with st.sidebar:
         st.header("🔍 Filters")
         
+        # Fetch dynamic project members
+        if 'available_reporters' not in st.session_state:
+            st.session_state.available_reporters = jira_client.get_project_users()
+        available_reporters = st.session_state.available_reporters
+        
         # Predefined QA reporters (fallback if not found in Jira)
         QA_REPORTERS = [
             "Chinthaka Somarathna",
@@ -339,14 +344,14 @@ def render_sidebar(jira_client: JiraClient):
         elif reporter_filter_type == "Custom Selection":
             selected_reporters = st.multiselect(
                 "Select Reporters",
-                options=QA_REPORTERS,
-                help="Select specific reporters from the QA team list"
+                options=available_reporters,
+                help="Select specific users who have access to the project"
             )
             if selected_reporters:
                 st.info(f"✓ {len(selected_reporters)} reporter(s) selected")
         else:
             selected_reporters = None
-            st.info(f"📊 All reporters ({len(QA_REPORTERS)} QA team members)")
+            st.info(f"📊 All reporters ({len(available_reporters)} users)")
         
         st.divider()
         

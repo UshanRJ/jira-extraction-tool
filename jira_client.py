@@ -309,9 +309,59 @@ class JiraClient:
         return ['P0', 'P1', 'P2', 'P3', 'P4', 'None']
     
     def get_project_users(self) -> List[str]:
-        """Get all users with access to the project by fetching reporters from recent issues"""
+        """Get all users with access to the project using the project members endpoint"""
         try:
-            # Fetch enough project issues to build a complete reporter list.
+            # First, try fetching from project members endpoint (most reliable)
+            url = f"{self.base_url}/rest/api/3/project/{self.project_key}/members"
+            all_members = []
+            start_at = 0
+            page_size = 100
+            
+            while True:
+                self._rate_limit()
+                params = {
+                    'startAt': start_at,
+                    'maxResults': page_size
+                }
+                response = self.session.get(url, params=params, timeout=30)
+                
+                try:
+                    data = self._handle_response(response)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch project members from members endpoint: {str(e)}")
+                    # Fall back to fetching reporters from issues
+                    return self._get_reporters_from_issues()
+                
+                members = data.get('values', [])
+                all_members.extend(members)
+                
+                if len(members) < page_size:
+                    break
+                
+                start_at += page_size
+            
+            # Extract user display names
+            user_names = set()
+            for member in all_members:
+                displayName = member.get('displayName')
+                if displayName:
+                    user_names.add(displayName)
+            
+            user_list = sorted(user_names)
+            logger.info(f"Retrieved {len(user_list)} project members for {self.project_key}")
+            
+            return user_list if user_list else self._get_default_qa_team()
+            
+        except Exception as e:
+            logger.warning(f"Failed to get project members: {str(e)}")
+            # Fall back to fetching reporters from issues
+            return self._get_reporters_from_issues()
+    
+    def _get_reporters_from_issues(self) -> List[str]:
+        """Fallback: Get all unique reporters from all project issues"""
+        try:
+            logger.info("Falling back to fetching reporters from project issues...")
+            # Fetch all issues with reporter field to get unique reporters
             issues = self._execute_jql_search(
                 f'project = {self.project_key} ORDER BY created DESC',
                 max_results=None,
@@ -328,18 +378,13 @@ class JiraClient:
                     if display_name and display_name != 'Unknown':
                         user_names.add(display_name)
             
-            # Convert to sorted list
             user_list = sorted(user_names)
-            
-            # Log the retrieved users for debugging
-            logger.info(f"Retrieved {len(user_list)} unique reporters for project {self.project_key}")
-            if user_list:
-                logger.debug(f"Reporter list: {', '.join(user_list)}")
+            logger.info(f"Retrieved {len(user_list)} unique reporters from project issues")
             
             return user_list if user_list else self._get_default_qa_team()
             
         except Exception as e:
-            logger.warning(f"Failed to get project users from API: {str(e)}")
+            logger.warning(f"Failed to get reporters from issues: {str(e)}")
             return self._get_default_qa_team()
     
     def _get_default_qa_team(self) -> List[str]:
