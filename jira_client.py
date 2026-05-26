@@ -208,6 +208,7 @@ class JiraClient:
         start_at = 0
         max_iterations = 100  # Safety limit to prevent infinite loops
         iteration = 0
+        next_page_token = None
 
         try:
             logger.info(f"[JQL] Executing: {jql}")
@@ -224,10 +225,14 @@ class JiraClient:
 
                 params = {
                     'jql': jql,
-                    'startAt': start_at,
                     'maxResults': page_size,
                     'fields': ','.join(selected_fields)
                 }
+                
+                if next_page_token:
+                    params['nextPageToken'] = next_page_token
+                else:
+                    params['startAt'] = start_at
 
                 response = self.session.get(url, params=params, timeout=30)
                 data = self._handle_response(response)
@@ -246,12 +251,24 @@ class JiraClient:
                     f"Retrieved {len(issues)} issues from Jira (iteration={iteration}, startAt={start_at}, total={total if total is not None else 'unknown'})"
                 )
 
-                # Break if we got fewer results than requested (indicates end of results)
-                if len(issues) < page_size:
-                    logger.info(f"Reached end of results. Retrieved {len(collected_issues)} total issues.")
-                    break
-
-                start_at += len(issues)
+                # Check for cursor-based pagination
+                if 'isLast' in data:
+                    if data.get('isLast'):
+                        logger.info(f"Reached end of results (isLast=True). Retrieved {len(collected_issues)} total issues.")
+                        break
+                    
+                    next_token = data.get('nextPageToken')
+                    if next_token:
+                        next_page_token = next_token
+                    else:
+                        # Fallback if no next token provided but isLast is false (unlikely but safe)
+                        start_at += len(issues)
+                else:
+                    # Offset-based pagination
+                    if len(issues) < page_size:
+                        logger.info(f"Reached end of results. Retrieved {len(collected_issues)} total issues.")
+                        break
+                    start_at += len(issues)
             
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}). Retrieved {len(collected_issues)} issues.")
