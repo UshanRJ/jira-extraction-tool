@@ -6,7 +6,6 @@ Handles secure communication with Atlassian Jira API
 import requests
 from typing import List, Dict, Any, Optional
 import logging
-from datetime import datetime
 import time
 import base64
 
@@ -51,6 +50,27 @@ class JiraClient:
         if elapsed < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - elapsed)
         self.last_request_time = time.time()
+
+    @staticmethod
+    def _escape_jql_value(value: str) -> str:
+        """Escape a string for safe insertion into a quoted JQL value."""
+        return value.replace('\\', '\\\\').replace('"', '\\"')
+
+    def _append_equals_clause(self, jql_parts: List[str], field_name: str, values: List[str]) -> None:
+        """Append a JQL equality or IN clause for a list of values."""
+        escaped_values = [self._escape_jql_value(value) for value in values]
+        if len(escaped_values) == 1:
+            jql_parts.append(f'{field_name} = "{escaped_values[0]}"')
+        else:
+            values_str = ', '.join([f'"{value}"' for value in escaped_values])
+            jql_parts.append(f'{field_name} IN ({values_str})')
+
+    def _append_date_clause(self, jql_parts: List[str], start_date: Optional[str], end_date: Optional[str]) -> None:
+        """Append created date bounds to the JQL query."""
+        if start_date:
+            jql_parts.append(f'created >= "{start_date}"')
+        if end_date:
+            jql_parts.append(f'created <= "{end_date}"')
     
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
         """Handle API response with proper error handling"""
@@ -83,7 +103,9 @@ class JiraClient:
         filter_clarifications: bool = False,
         summary_search: Optional[str] = None,
         max_results: int = 100,
-        reporters: Optional[List[str]] = None
+        reporters: Optional[List[str]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Search Jira issues with filters
@@ -96,6 +118,9 @@ class JiraClient:
             filter_clarifications: If True, filter for tasks with clarification in summary
             summary_search: Optional text to search in issue summaries
             max_results: Maximum number of results to return
+            reporters: Optional list of reporter display names
+            start_date: Optional created date lower bound (YYYY-MM-DD)
+            end_date: Optional created date upper bound (YYYY-MM-DD)
         
         Returns:
             List of issues
@@ -106,11 +131,7 @@ class JiraClient:
             
             # Add issue type filter
             if issue_types:
-                if len(issue_types) == 1:
-                    jql_parts.append(f'type = "{issue_types[0]}"')
-                else:
-                    types_str = ', '.join([f'"{t}"' for t in issue_types])
-                    jql_parts.append(f'type IN ({types_str})')
+                self._append_equals_clause(jql_parts, 'type', issue_types)
             
             # Add status filter
             if statuses:
@@ -122,37 +143,28 @@ class JiraClient:
                         expanded_statuses.extend(["01_To Do", "To Do"])
                     else:
                         expanded_statuses.append(status)
-                
-                if len(expanded_statuses) == 1:
-                    jql_parts.append(f'status = "{expanded_statuses[0]}"')
-                else:
-                    statuses_str = ', '.join([f'"{s}"' for s in expanded_statuses])
-                    jql_parts.append(f'status IN ({statuses_str})')
+
+                self._append_equals_clause(jql_parts, 'status', expanded_statuses)
             
             # Add priority filter
             if priorities:
-                if len(priorities) == 1:
-                    jql_parts.append(f'priority = "{priorities[0]}"')
-                else:
-                    priorities_str = ', '.join([f'"{p}"' for p in priorities])
-                    jql_parts.append(f'priority IN ({priorities_str})')
+                self._append_equals_clause(jql_parts, 'priority', priorities)
             
             # Add reporter filter in JQL so it is applied before max_results cap
             if reporters:
-                if len(reporters) == 1:
-                    jql_parts.append(f'reporter = "{reporters[0]}"')
-                else:
-                    reporters_str = ', '.join([f'"{r}"' for r in reporters])
-                    jql_parts.append(f'reporter in ({reporters_str})')
+                self._append_equals_clause(jql_parts, 'reporter', reporters)
 
             # Add sprint filter
             if include_sprint_filter:
                 jql_parts.append('sprint is EMPTY')
+
+            # Add created date bounds directly to JQL so the API returns the full matching set
+            self._append_date_clause(jql_parts, start_date, end_date)
             
             # Add custom summary search filter
             if summary_search:
                 # Use JQL text search operator (~) for case-insensitive search
-                jql_parts.append(f'summary ~ "{summary_search}"')
+                jql_parts.append(f'summary ~ "{self._escape_jql_value(summary_search)}"')
             
             # Add clarification filter - overrides statuses, types, and summary with specific logic
             if filter_clarifications:
@@ -163,7 +175,7 @@ class JiraClient:
                     part.startswith('summary')
                 )]
                 # Add specific clarification filter logic
-                jql_parts.append('status IN ("01_To Do", "To Do", "Ready for Dev")')
+                jql_parts.append('status IN ("01_To Do", "To Do", "Ready for Dev", "Ready For Dev")')
                 jql_parts.append('type = Task')
                 jql_parts.append('summary ~ "clarification"')
             
@@ -181,28 +193,51 @@ class JiraClient:
             logger.error(f"Issue search failed: {str(e)}")
             raise JiraAPIError(f"Failed to search issues: {str(e)}")
     
-    def _execute_jql_search(self, jql: str, max_results: int) -> List[Dict[str, Any]]:
+    def _execute_jql_search(self, jql: str, max_results: Optional[int] = None, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Execute JQL search using the /rest/api/3/search/jql endpoint
         """
-        self._rate_limit()
-        
-        # Use the /rest/api/3/search/jql endpoint with minimal payload
         url = f"{self.base_url}/rest/api/3/search/jql"
-        
-        payload = {
-            'jql': jql,
-            'maxResults': max_results,
-            'fields': ['summary', 'status', 'priority', 'reporter', 'parent', 'created']
-        }
-        
+        selected_fields = fields or ['summary', 'status', 'priority', 'reporter', 'parent', 'created']
+        collected_issues: List[Dict[str, Any]] = []
+        page_size = 100
+        start_at = 0
+
         try:
-            response = self.session.post(url, json=payload, timeout=30)
-            data = self._handle_response(response)
-            
-            issues = data.get('issues', [])
-            logger.info(f"Retrieved {len(issues)} issues from Jira")
-            return issues
+            while max_results is None or len(collected_issues) < max_results:
+                self._rate_limit()
+
+                payload = {
+                    'jql': jql,
+                    'startAt': start_at,
+                    'maxResults': page_size,
+                    'fields': selected_fields
+                }
+
+                response = self.session.post(url, json=payload, timeout=30)
+                data = self._handle_response(response)
+
+                issues = data.get('issues', [])
+                collected_issues.extend(issues)
+
+                total = data.get('total')
+                logger.info(
+                    f"Retrieved {len(issues)} issues from Jira (startAt={start_at}, total={total if total is not None else 'unknown'})"
+                )
+
+                if not issues:
+                    break
+
+                if len(issues) < page_size:
+                    break
+
+                start_at += len(issues)
+
+            if max_results is not None and len(collected_issues) > max_results:
+                collected_issues = collected_issues[:max_results]
+
+            logger.info(f"Retrieved {len(collected_issues)} issues from Jira in total")
+            return collected_issues
             
         except Exception as e:
             logger.error(f"JQL search failed: {str(e)}")
@@ -228,7 +263,28 @@ class JiraClient:
     
     def get_statuses(self) -> List[str]:
         """Get available statuses"""
-        # Common Jira statuses - can be enhanced to fetch from API
+        try:
+            self._rate_limit()
+
+            url = f"{self.base_url}/rest/api/3/project/{self.project_key}/statuses"
+            response = self.session.get(url, timeout=30)
+            data = self._handle_response(response)
+
+            status_names = []
+            for issue_type_entry in data:
+                for status in issue_type_entry.get('statuses', []):
+                    name = status.get('name')
+                    if name and name not in status_names:
+                        status_names.append(name)
+
+            if status_names:
+                logger.info(f"Retrieved {len(status_names)} project statuses")
+                return status_names
+
+        except Exception as e:
+            logger.warning(f"Failed to get statuses from API: {str(e)}")
+
+        # Common Jira statuses as fallback
         return [
             'To Do',
             'Ready for Dev',
@@ -251,23 +307,12 @@ class JiraClient:
     def get_project_users(self) -> List[str]:
         """Get all users with access to the project by fetching reporters from recent issues"""
         try:
-            self._rate_limit()
-            
-            # Instead of using user/search which has parameter issues,
-            # we'll fetch recent issues and extract unique reporters
-            # This gives us actual active users on the project
-            url = f"{self.base_url}/rest/api/3/search/jql"
-            
-            payload = {
-                'jql': f'project = {self.project_key} ORDER BY created DESC',
-                'maxResults': 1000,  # Fetch many issues to get diverse reporters
-                'fields': ['reporter']
-            }
-            
-            response = self.session.post(url, json=payload, timeout=30)
-            data = self._handle_response(response)
-            
-            issues = data.get('issues', [])
+            # Fetch enough project issues to build a complete reporter list.
+            issues = self._execute_jql_search(
+                f'project = {self.project_key} ORDER BY created DESC',
+                max_results=None,
+                fields=['reporter']
+            )
             
             # Extract unique reporter names
             user_names = set()

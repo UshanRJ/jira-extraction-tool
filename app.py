@@ -192,6 +192,19 @@ def load_configuration():
         st.stop()
 
 
+def resolve_default_options(options, preferred_values):
+    """Return preferred values matched against the available options when possible."""
+    normalized_options = {str(option).strip().casefold(): option for option in options}
+    resolved = []
+
+    for value in preferred_values:
+        matched = normalized_options.get(str(value).strip().casefold())
+        if matched is not None and matched not in resolved:
+            resolved.append(matched)
+
+    return resolved or list(preferred_values)
+
+
 def render_header():
     """Render application header with user info"""
     col1, col2, col3 = st.columns([3, 1, 1])
@@ -273,7 +286,7 @@ def render_sidebar(jira_client: JiraClient):
             "📌 Filter: Title contains 'Clarification'",
             key='filter_clarifications_cb',
             value=False,
-            help="Apply special filter: status IN ('01_To Do', 'To Do', 'Ready for Dev') AND type = Task AND summary ~ 'clarification'"
+            help="Apply special filter: status IN ('01_To Do', 'To Do', 'Ready for Dev', 'Ready For Dev') AND type = Task AND summary ~ 'clarification'"
         )
 
         if filter_clarifications:
@@ -299,10 +312,11 @@ def render_sidebar(jira_client: JiraClient):
         # Status Selection
         st.subheader("🎯 Status" + (" *(overridden)*" if filter_clarifications else ""))
         available_statuses = jira_client.get_statuses()
+        default_statuses = resolve_default_options(available_statuses, ["To Do", "Ready for Dev"])
         selected_statuses = st.multiselect(
             "Select Statuses",
             options=available_statuses,
-            default=["To Do", "Ready for Dev"],
+            default=default_statuses,
             help="Select one or more statuses"
         )
         
@@ -382,7 +396,7 @@ def render_sidebar(jira_client: JiraClient):
         st.subheader("🏃 Sprint")
         filter_no_sprint = st.checkbox(
             "Only issues without Sprint",
-            value=True,
+            value=False,
             help="Filter issues that have no sprint assigned"
         )
         
@@ -442,7 +456,9 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
             filter_clarifications=filters['filter_clarifications'],
             summary_search=filters.get('summary_search'),
             max_results=filters['max_results'],
-            reporters=filters.get('reporters')
+            reporters=filters.get('reporters'),
+            start_date=filters.get('start_date'),
+            end_date=filters.get('end_date')
         )
         
         progress_bar.progress(50, text="📦 Processing data...")
@@ -459,15 +475,7 @@ def fetch_data(jira_client: JiraClient, filters: dict, base_url: str):
         
         progress_bar.progress(75, text="🔍 Applying filters...")
         
-        # Clarification and reporter filters are applied at JQL level.
-
-        # Apply date filter
-        if filters['start_date'] or filters['end_date']:
-            df = processor.filter_dataframe(
-                df,
-                start_date=filters['start_date'],
-                end_date=filters['end_date']
-            )
+        # Clarification, reporter, and date filters are applied at JQL level.
         
         if df.empty:
             progress_bar.empty()
