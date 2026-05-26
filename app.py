@@ -231,13 +231,17 @@ def render_sidebar(jira_client: JiraClient):
     with st.sidebar:
         st.header("🔍 Filters")
         
-        # Predefined QA reporters
+        # QA team reporters only (for QA Team Only filter)
         QA_REPORTERS = [
             "Chinthaka Somarathna",
             "Madushika Deshappriya",
             "Pasindu Hashara Liyanage",
             "Rukshani Jayathilaka",
-            "Ushan Jayakody",
+            "Ushan Jayakody"
+        ]
+        
+        # All reporters including newly added ones (for All Reporters and Custom Selection)
+        ALL_REPORTERS = QA_REPORTERS + [
             "Paulo Aragao",
             "Atharva Pandit",
             "Ryan Smith",
@@ -346,14 +350,14 @@ def render_sidebar(jira_client: JiraClient):
         elif reporter_filter_type == "Custom Selection":
             selected_reporters = st.multiselect(
                 "Select Reporters",
-                options=QA_REPORTERS,
-                help="Select specific reporters from the QA team"
+                options=ALL_REPORTERS,
+                help="Select specific reporters"
             )
             if selected_reporters:
                 st.info(f"✓ {len(selected_reporters)} reporter(s) selected")
         else:
             selected_reporters = None
-            st.info(f"📊 All reporters ({len(QA_REPORTERS)} QA team members)")
+            st.info(f"📊 All reporters ({len(ALL_REPORTERS)} total)")
         
         st.divider()
         

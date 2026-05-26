@@ -208,7 +208,11 @@ class JiraClient:
         start_at = 0
 
         try:
-            while max_results is None or len(collected_issues) < max_results:
+            while True:
+                # Stop if we've reached max_results
+                if max_results is not None and len(collected_issues) >= max_results:
+                    break
+                
                 self._rate_limit()
 
                 params = {
@@ -229,9 +233,7 @@ class JiraClient:
                     f"Retrieved {len(issues)} issues from Jira (startAt={start_at}, total={total if total is not None else 'unknown'})"
                 )
 
-                if not issues:
-                    break
-
+                # Break if we got fewer results than requested (indicates end of results)
                 if len(issues) < page_size:
                     break
 
@@ -307,55 +309,6 @@ class JiraClient:
         """Get available priorities"""
         # Common priorities - can be enhanced to fetch from API
         return ['P0', 'P1', 'P2', 'P3', 'P4', 'None']
-    
-    def get_project_users(self) -> List[str]:
-        """Get all users with access to the project by fetching reporters from project issues"""
-        try:
-            logger.info(f"Fetching project users from issue reporters for {self.project_key}")
-            return self._get_reporters_from_issues()
-        except Exception as e:
-            logger.warning(f"Failed to get project users: {str(e)}")
-            return self._get_default_qa_team()
-    
-    def _get_reporters_from_issues(self) -> List[str]:
-        """Fallback: Get all unique reporters from all project issues"""
-        try:
-            logger.info("Falling back to fetching reporters from project issues...")
-            # Fetch all issues with reporter field to get unique reporters
-            issues = self._execute_jql_search(
-                f'project = {self.project_key} ORDER BY created DESC',
-                max_results=None,
-                fields=['reporter']
-            )
-            
-            # Extract unique reporter names
-            user_names = set()
-            for issue in issues:
-                fields = issue.get('fields', {})
-                reporter = fields.get('reporter')
-                if reporter:
-                    display_name = reporter.get('displayName') or reporter.get('name', 'Unknown')
-                    if display_name and display_name != 'Unknown':
-                        user_names.add(display_name)
-            
-            user_list = sorted(user_names)
-            logger.info(f"Retrieved {len(user_list)} unique reporters from project issues")
-            
-            return user_list if user_list else self._get_default_qa_team()
-            
-        except Exception as e:
-            logger.warning(f"Failed to get reporters from issues: {str(e)}")
-            return self._get_default_qa_team()
-    
-    def _get_default_qa_team(self) -> List[str]:
-        """Return default QA team as fallback"""
-        return [
-            "Chinthaka Somarathna",
-            "Madushika Deshappriya",
-            "Pasindu Hashara Liyanage",
-            "Rukshani Jayathilaka",
-            "Ushan Jayakody"
-        ]
     
     def get_epics(self) -> List[Dict[str, Any]]:
         """
