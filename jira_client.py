@@ -206,9 +206,16 @@ class JiraClient:
         collected_issues: List[Dict[str, Any]] = []
         page_size = 100
         start_at = 0
+        max_iterations = 100  # Safety limit to prevent infinite loops
+        iteration = 0
 
         try:
-            while True:
+            logger.debug(f"Executing JQL: {jql}")
+            logger.debug(f"Fields: {selected_fields}")
+            
+            while iteration < max_iterations:
+                iteration += 1
+                
                 # Stop if we've reached max_results
                 if max_results is not None and len(collected_issues) >= max_results:
                     break
@@ -235,9 +242,13 @@ class JiraClient:
 
                 # Break if we got fewer results than requested (indicates end of results)
                 if len(issues) < page_size:
+                    logger.info(f"Reached end of results. Retrieved {len(collected_issues)} total issues.")
                     break
 
                 start_at += len(issues)
+            
+            if iteration >= max_iterations:
+                logger.warning(f"Reached max iterations ({max_iterations}). Retrieved {len(collected_issues)} issues.")
 
             if max_results is not None and len(collected_issues) > max_results:
                 collected_issues = collected_issues[:max_results]
