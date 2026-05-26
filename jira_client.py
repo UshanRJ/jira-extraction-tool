@@ -320,11 +320,11 @@ class JiraClient:
         try:
             logger.info(f"Fetching epics for project {self.project_key}")
             
-            # Fetch all epics in the project
+            # Fetch all epics in the project using simple JQL
             epics = self._execute_jql_search(
-                f'project = {self.project_key} AND type = Epic ORDER BY priority ASC, created DESC',
+                f'project = {self.project_key} AND type = Epic',
                 max_results=None,
-                fields=['summary', 'status', 'priority', 'assignee', 'created', 'updated']
+                fields=['summary', 'status', 'priority', 'assignee', 'created']
             )
             
             epic_list = []
@@ -367,7 +367,7 @@ class JiraClient:
             # Fetch issues for each epic
             for epic_key in epic_keys:
                 linked_issues = self._execute_jql_search(
-                    f'project = {self.project_key} AND "Epic Link" = {epic_key} ORDER BY priority ASC, created DESC',
+                    f'project = {self.project_key} AND "Epic Link" = {epic_key}',
                     max_results=None,
                     fields=['summary', 'status', 'priority', 'assignee', 'issuetype', 'parent', 'created']
                 )
