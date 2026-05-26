@@ -199,9 +199,9 @@ class JiraClient:
     
     def _execute_jql_search(self, jql: str, max_results: Optional[int] = None, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Execute JQL search using Jira's standard search endpoint
+        Execute JQL search using the /rest/api/3/search/jql endpoint
         """
-        url = f"{self.base_url}/rest/api/3/search"
+        url = f"{self.base_url}/rest/api/3/search/jql"
         selected_fields = fields or ['summary', 'status', 'priority', 'reporter', 'parent', 'created']
         collected_issues: List[Dict[str, Any]] = []
         page_size = 100
