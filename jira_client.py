@@ -199,7 +199,7 @@ class JiraClient:
     
     def _execute_jql_search(self, jql: str, max_results: Optional[int] = None, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Execute JQL search using the /rest/api/3/search/jql endpoint
+        Execute JQL search using the /rest/api/3/search/jql endpoint with query parameters
         """
         url = f"{self.base_url}/rest/api/3/search/jql"
         selected_fields = fields or ['summary', 'status', 'priority', 'reporter', 'parent', 'created']
@@ -211,14 +211,14 @@ class JiraClient:
             while max_results is None or len(collected_issues) < max_results:
                 self._rate_limit()
 
-                payload = {
+                params = {
                     'jql': jql,
                     'startAt': start_at,
                     'maxResults': page_size,
-                    'fields': selected_fields
+                    'fields': ','.join(selected_fields)
                 }
 
-                response = self.session.post(url, json=payload, timeout=30)
+                response = self.session.post(url, params=params, timeout=30)
                 data = self._handle_response(response)
 
                 issues = data.get('issues', [])
