@@ -337,15 +337,20 @@ class JiraClient:
         try:
             logger.info(f"Fetching epics for project {self.project_key}")
             
-            # Fetch all epics in the project using simple JQL
+            # Fetch all epics in the project using simple JQL - type value must be quoted
             epics = self._execute_jql_search(
-                f'project = {self.project_key} AND type = Epic',
+                f'project = {self.project_key} AND type = "Epic"',
                 max_results=None,
                 fields=['summary', 'status', 'priority', 'assignee', 'created']
             )
             
             epic_list = []
             for epic in epics:
+                # Skip None values that might slip through
+                if epic is None:
+                    logger.warning("Skipping None epic in results")
+                    continue
+                    
                 epic_data = {
                     'key': epic.get('key'),
                     'summary': epic.get('fields', {}).get('summary', 'N/A'),
