@@ -201,107 +201,55 @@ def render_epic_table(df: pd.DataFrame, base_url: str) -> None:
     
     st.divider()
     
-    # Prepare display columns with Jira links
+    # Prepare display columns with Jira links for Streamlit LinkColumn
     display_df = df.copy()
     
-    # Create clickable links
-    display_df['Epic_Link'] = display_df.apply(
-        lambda row: f"[{row['Epic_Key']}]({base_url}/browse/{row['Epic_Key']})" if pd.notna(row['Epic_Key']) else "",
+    # Create interactive links embedding the display text in the URL fragment
+    display_df['Epic_URL'] = display_df.apply(
+        lambda row: f"{base_url}/browse/{row['Epic_Key']}#|{row['Epic_Key']}" if pd.notna(row['Epic_Key']) else None,
         axis=1
     )
-    display_df['Issue_Link'] = display_df.apply(
-        lambda row: f"[{row['Issue_Key']}]({base_url}/browse/{row['Issue_Key']})" if pd.notna(row['Issue_Key']) else "",
+    display_df['Issue_URL'] = display_df.apply(
+        lambda row: f"{base_url}/browse/{row['Issue_Key']}#|{row['Issue']}" if pd.notna(row['Issue_Key']) else None,
         axis=1
     )
-    display_df['Subtask_Link'] = display_df.apply(
-        lambda row: f"[{row['Subtask_Key']}]({base_url}/browse/{row['Subtask_Key']})" if pd.notna(row['Subtask_Key']) else "",
+    display_df['Subtask_URL'] = display_df.apply(
+        lambda row: f"{base_url}/browse/{row['Subtask_Key']}#|{row['Subtask']}" if pd.notna(row['Subtask_Key']) else None,
         axis=1
     )
     
     # Select columns to display
     columns_to_show = [
-        'Epic_Link', 'Issue_Link', 'Issue_Type', 'Issue_Priority', 'Issue_Status', 'Issue_Assignee',
-        'Subtask', 'Subtask_Link', 'Subtask_Priority', 'Subtask_Status', 'Subtask_Assignee'
+        'Epic_URL', 'Issue_URL', 'Issue_Type', 'Issue_Priority', 'Issue_Status', 'Issue_Assignee',
+        'Subtask_URL', 'Subtask_Priority', 'Subtask_Status', 'Subtask_Assignee'
     ]
     
     display_columns = {
-        'Epic_Link': 'Epic',
-        'Issue_Link': 'Issue Key',
+        'Epic_URL': 'Epic',
+        'Issue_URL': 'Issue / Story',
         'Issue_Type': 'Type',
         'Issue_Priority': 'Priority',
         'Issue_Status': 'Status',
         'Issue_Assignee': 'Assignee',
-        'Subtask': 'Subtask Summary',
-        'Subtask_Link': 'Subtask Key',
-        'Subtask_Priority': 'Priority',
-        'Subtask_Status': 'Status',
-        'Subtask_Assignee': 'Assignee'
+        'Subtask_URL': 'Subtask',
+        'Subtask_Priority': 'Subtask Priority',
+        'Subtask_Status': 'Subtask Status',
+        'Subtask_Assignee': 'Subtask Assignee'
     }
     
     table_df = display_df[columns_to_show].rename(columns=display_columns)
     
-    # Use pandas to_html instead of to_markdown (which requires tabulate)
-    # Wrap in a custom styled div for better UI/UX
-    html_table = table_df.to_html(
-        index=False,
-        escape=False, # Important for retaining our HTML links
-        justify='left',
-        classes=['jira-table']
+    # Use native Streamlit dataframe for sorting and interactivity
+    st.dataframe(
+        table_df,
+        column_config={
+            "Epic": st.column_config.LinkColumn("Epic", display_text="([^|]+)$"),
+            "Issue / Story": st.column_config.LinkColumn("Issue / Story", display_text="([^|]+)$"),
+            "Subtask": st.column_config.LinkColumn("Subtask", display_text="([^|]+)$")
+        },
+        use_container_width=True,
+        hide_index=True
     )
-    
-    # Custom CSS for a calming, modern, pleasing theme
-    st.markdown("""
-        <style>
-        .jira-table-container {
-            overflow-x: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
-        table.jira-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 0.9em;
-            background-color: #ffffff;
-            color: #333333;
-        }
-        table.jira-table thead th {
-            background-color: #f4f6f8;
-            color: #2c3e50;
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 2px solid #e0e6ed;
-            font-weight: 600;
-        }
-        table.jira-table tbody tr {
-            border-bottom: 1px solid #e0e6ed;
-            transition: background-color 0.2s ease;
-        }
-        table.jira-table tbody tr:nth-of-type(even) {
-            background-color: #fbfcfd;
-        }
-        table.jira-table tbody tr:hover {
-            background-color: #f0f4f8;
-        }
-        table.jira-table td {
-            padding: 10px 15px;
-            vertical-align: middle;
-        }
-        table.jira-table a {
-            color: #3498db;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        table.jira-table a:hover {
-            text-decoration: underline;
-            color: #2980b9;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Render the styled table
-    st.markdown(f'<div class="jira-table-container">{html_table}</div>', unsafe_allow_html=True)
     
     # Also provide downloadable CSV
     st.divider()
